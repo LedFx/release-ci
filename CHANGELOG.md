@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/LedFx/release-ci/compare/v0.3.0...v0.3.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* discover draft releases before publication ([#12](https://github.com/LedFx/release-ci/issues/12)) ([089c9fe](https://github.com/LedFx/release-ci/commit/089c9fe155c435e3da8fac051a697eee7645e386))
+* isolate PyPI upload sidecars from verified distributions ([#14](https://github.com/LedFx/release-ci/issues/14)) ([f88cea3](https://github.com/LedFx/release-ci/commit/f88cea3e61dee373295f8c9c895e1fe5a5a4ebc4))
+
 ## [0.3.0](https://github.com/LedFx/release-ci/compare/v0.2.0...v0.3.0) (2026-10-05)
 
 
