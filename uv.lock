@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 
 [options]
@@ -34,6 +34,7 @@ wheels = [
 name = "ledfx-release-ci"
 version = "0.1.0"
 source = { virtual = "." }
+default-groups = []
 
 [package.dev-dependencies]
 dev = [
