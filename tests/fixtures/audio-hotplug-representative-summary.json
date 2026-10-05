@@ -1,0 +1,11 @@
+{
+  "name": "audio-hotplug",
+  "version": "0.1.0",
+  "wheel": "audio_hotplug-0.1.0-py3-none-any.whl",
+  "metadata_name": "audio-hotplug",
+  "metadata_version": "0.1.0",
+  "metadata_requires_python": ">=3.10, <3.14",
+  "sdist": "audio_hotplug-0.1.0.tar.gz",
+  "pkginfo_name": "audio-hotplug",
+  "pkginfo_version": "0.1.0"
+}

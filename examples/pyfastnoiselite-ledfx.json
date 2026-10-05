@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "repository": "LedFx/pyfastnoiselite-ledfx",
+  "workflow": ".github/workflows/build.yml",
+  "tag_prefix": "v",
+  "python": {
+    "project": "pyfastnoiselite-ledfx",
+    "wheel_stem": "pyfastnoiselite_ledfx",
+    "wheel_tags": [
+      "cp311-abi3-macosx_10_9_x86_64",
+      "cp311-abi3-macosx_11_0_arm64",
+      "cp311-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64",
+      "cp311-abi3-manylinux_2_24_armv7l.manylinux_2_31_armv7l",
+      "cp311-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64",
+      "cp311-abi3-musllinux_1_2_aarch64",
+      "cp311-abi3-musllinux_1_2_armv7l",
+      "cp311-abi3-musllinux_1_2_x86_64",
+      "cp311-abi3-win_amd64"
+    ],
+    "sdist": "pyfastnoiselite_ledfx-{version}.tar.gz"
+  },
+  "github_assets": {
+    "distributions": true,
+    "files": []
+  },
+  "oci": []
+}

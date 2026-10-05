@@ -1,0 +1,10 @@
+{
+  "source": "https://pypi.org/pypi/LedFx/2.2.0/json",
+  "json_sha256": "e3d0c12d9cedf1f3e7cfc691f4abd3e22ff08ea56fe32cbdce4d0f5f12f479fb",
+  "name": "LedFx",
+  "version": "2.2.0",
+  "filenames": [
+    "ledfx-2.2.0-py3-none-any.whl",
+    "ledfx-2.2.0.tar.gz"
+  ]
+}

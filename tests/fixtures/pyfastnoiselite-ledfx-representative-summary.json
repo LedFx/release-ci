@@ -1,0 +1,11 @@
+{
+  "name": "pyfastnoiselite-ledfx",
+  "version": "0.0.9",
+  "wheel": "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+  "metadata_name": "pyfastnoiselite-ledfx",
+  "metadata_version": "0.0.9",
+  "metadata_requires_python": ">=3.11",
+  "sdist": "pyfastnoiselite_ledfx-0.0.9.tar.gz",
+  "pkginfo_name": "pyfastnoiselite-ledfx",
+  "pkginfo_version": "0.0.9"
+}

@@ -1,0 +1,7 @@
+LedFx release-ci
+
+The release transaction and related tests are derived from LedFx and
+ledfx-senders, maintained by the LedFx contributors. Distributed under the
+GNU General Public License version 3 or later; see LICENSE.
+
+Consumer package licenses and bundled third-party notices are unchanged.

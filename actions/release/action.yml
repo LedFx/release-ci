@@ -1,0 +1,54 @@
+name: Verified release transaction
+description: Validate immutable artifacts and finalize an existing release draft last
+inputs:
+  phase:
+    description: prepare, check-upload, promote, or finalize
+    required: true
+  policy:
+    description: Caller workspace-relative JSON policy from the tested source commit
+    required: true
+  dist:
+    description: Caller workspace-relative tested Python distribution directory
+    required: true
+  snapshot:
+    description: Absolute owned snapshot path beneath runner.temp
+    required: true
+  assets:
+    description: Caller workspace-relative additional GitHub asset directory
+    required: false
+    default: ''
+  docker-digests:
+    description: Caller workspace-relative tested OCI source receipt directory
+    required: false
+    default: ''
+outputs:
+  already_published:
+    description: True when the existing public release is complete and verified
+    value: ${{ steps.transaction.outputs.already_published }}
+  pypi_upload:
+    description: True when matching distributions are missing from PyPI
+    value: ${{ steps.transaction.outputs.pypi_upload }}
+  image_digests:
+    description: JSON object mapping configured OCI image names to verified index digests
+    value: ${{ steps.transaction.outputs.image_digests }}
+  published:
+    description: True after final public release verification
+    value: ${{ steps.transaction.outputs.published }}
+runs:
+  using: composite
+  steps:
+    - id: transaction
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/../..
+        PHASE: ${{ inputs.phase }}
+        POLICY: ${{ inputs.policy }}
+        DIST: ${{ inputs.dist }}
+        SNAPSHOT: ${{ inputs.snapshot }}
+        ASSETS: ${{ inputs.assets }}
+        DOCKER_DIGESTS: ${{ inputs.docker-digests }}
+      run: |
+        args=("$PHASE" --policy "$POLICY" --dist "$DIST" --snapshot "$SNAPSHOT")
+        if [[ -n "$ASSETS" ]]; then args+=(--assets "$ASSETS"); fi
+        if [[ -n "$DOCKER_DIGESTS" ]]; then args+=(--docker-digests "$DOCKER_DIGESTS"); fi
+        python3 "$ACTION_ROOT/entrypoint.py" "${args[@]}"
