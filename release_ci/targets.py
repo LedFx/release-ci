@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .common import PublicationError, string
-from .policy import expand_tag, keys, strings
+from .config import expand_tag, keys, strings
 
 ARCHES = {
     "linux": ("x86_64", "aarch64", "armv7l", "i686"),
@@ -69,12 +69,13 @@ class WheelPlan:
     wheel_targets: Literal["pure", "cibuildwheel"]
     cibuildwheel: str | None
     targets: tuple[Target, ...]
+    pyproject_sha256: str | None
 
     @classmethod
     def pure(cls, source_sha: str) -> "WheelPlan":
         if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
             raise PublicationError("Invalid pure wheel plan source SHA")
-        return cls(source_sha, "pure", None, ())
+        return cls(source_sha, "pure", None, (), None)
 
     @classmethod
     def load(cls, value: object, source_sha: str) -> "WheelPlan":
@@ -86,12 +87,13 @@ class WheelPlan:
                     "source_sha",
                     "wheel_targets",
                     "cibuildwheel",
+                    "pyproject_sha256",
                     "targets",
                 },
             )
         except PublicationError:
             raise PublicationError(
-                "Invalid wheel plan: expected schema_version, source_sha, wheel_targets, cibuildwheel and targets"
+                "Invalid wheel plan: expected schema_version, source_sha, pyproject_sha256, wheel_targets, cibuildwheel and targets"
             ) from None
         if obj["wheel_targets"] != "cibuildwheel":
             raise PublicationError("Pre-build wheel plan must use cibuildwheel targets")
@@ -105,7 +107,10 @@ class WheelPlan:
         targets = tuple(Target.parse(item) for item in strings(obj["targets"]))
         if not targets:
             raise PublicationError("Wheel plan has no targets")
-        return cls(sha, "cibuildwheel", version, targets)
+        config_digest = string(obj["pyproject_sha256"])
+        if not re.fullmatch(r"[0-9a-f]{64}", config_digest):
+            raise PublicationError("Invalid pyproject digest in wheel plan")
+        return cls(sha, "cibuildwheel", version, targets, config_digest)
 
     def value(self) -> dict[str, object]:
         if self.wheel_targets == "pure":
@@ -120,8 +125,36 @@ class WheelPlan:
             "wheel_targets": "cibuildwheel",
             "source_sha": self.source_sha,
             "cibuildwheel": self.cibuildwheel,
+            "pyproject_sha256": self.pyproject_sha256,
             "targets": [target.identifier for target in self.targets],
         }
+
+    def validate_rows(self, rows: tuple[tuple[str, str], ...]) -> None:
+        expected = {
+            (
+                host,
+                {"AMD64": "win_amd64", "ARM64": "win_arm64", "x86": "win32"}.get(
+                    arch, arch
+                ),
+            )
+            for host, arch in rows
+        }
+        actual = {
+            (
+                {
+                    "manylinux": "linux",
+                    "musllinux": "linux",
+                    "macosx": "macos",
+                    "windows": "windows",
+                }[target.family],
+                target.arch,
+            )
+            for target in self.targets
+        }
+        if actual != expected:
+            raise PublicationError(
+                "Wheel plan platforms/architectures differ from configured target rows"
+            )
 
     def coverage(self, wheel_tags: dict[str, str]) -> None:
         if self.wheel_targets == "pure":

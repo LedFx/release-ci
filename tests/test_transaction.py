@@ -14,14 +14,11 @@ import pytest
 from release_ci.common import PublicationError, array, decode, string, table
 from release_ci.planner import plan
 from release_ci.publisher import Publisher
-
-POLICY = Path(__file__).resolve().parents[1] / "examples/ledfx-senders.json"
+from tests.project import PROJECT, ROOT, write_project
 
 
 def expected_names(version: str) -> set[str]:
-    retained = table(
-        decode((POLICY.parents[1] / "tests/fixtures/ledfx-senders.json").read_bytes())
-    )
+    retained = table(decode((ROOT / "tests/fixtures/ledfx-senders.json").read_bytes()))
     return {
         string(name).replace(string(retained["version"]), version)
         for name in array(retained["filenames"])
@@ -29,8 +26,8 @@ def expected_names(version: str) -> set[str]:
 
 
 @cache
-def native_plan() -> str:
-    _, expected = plan(POLICY.parents[1] / "tests/fixtures/planning/ledfx-senders", SHA)
+def native_plan(project: Path = PROJECT) -> str:
+    _, expected = plan(project, SHA)
     return json.dumps(expected.value())
 
 
@@ -153,12 +150,7 @@ def transaction(
     dist = tmp_path / "dist"
     pure = request.param == "pure"
     distributions(dist, pure=pure)
-    policy = POLICY
-    if pure:
-        value = table(decode(POLICY.read_bytes()))
-        table(value["python"])["wheel_targets"] = "pure"
-        policy = tmp_path / "pure-policy.json"
-        policy.write_text(json.dumps(value))
+    config = write_project(tmp_path / "project", pure=pure)
     remote = Remote()
     publisher = Publisher(
         dist,
@@ -166,8 +158,9 @@ def transaction(
         REPO,
         "v" + VERSION,
         SHA,
-        policy=policy,
-        wheel_plan=None if pure else native_plan(),
+        project=config,
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + "v" + VERSION,
+        wheel_plan=None if pure else native_plan(config),
         command=remote,
         fetch=remote.fetch,
     )
@@ -223,17 +216,17 @@ def test_partial_retry_skips_only_matching_remote_files(
 def test_explicit_asset_distribution_collision_rejected_before_side_effects(
     transaction: tuple[Publisher, Remote], tmp_path: Path, include_distributions: bool
 ) -> None:
-    from release_ci.common import decode, table
 
     original, remote = transaction
     name = next(iter(original.local_inputs()))
-    policy = table(decode(original.policy_path.read_bytes()))
-    policy["github_assets"] = {
-        "distributions": include_distributions,
-        "files": [name.replace(VERSION, "{version}")],
-    }
-    policy_path = tmp_path / "colliding-policy.json"
-    policy_path.write_text(json.dumps(policy))
+    config_path = write_project(
+        tmp_path / "colliding",
+        pure=original.config.wheel_targets == "pure",
+        settings={
+            "github-distributions": include_distributions,
+            "assets": [name.replace(VERSION, "{version}")],
+        },
+    )
     assets = tmp_path / "assets"
     assets.mkdir()
     (assets / name).write_bytes(b"different explicit GitHub asset bytes")
@@ -243,9 +236,10 @@ def test_explicit_asset_distribution_collision_rejected_before_side_effects(
         REPO,
         "v" + VERSION,
         SHA,
-        policy=policy_path,
-        wheel_plan=native_plan()
-        if original.policy.wheel_targets == "cibuildwheel"
+        project=config_path,
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/v" + VERSION,
+        wheel_plan=native_plan(config_path)
+        if original.config.wheel_targets == "cibuildwheel"
         else None,
         assets=assets,
         command=remote,
@@ -487,7 +481,7 @@ def test_distribution_metadata_and_regular_file_contract(
             {
                 "name": b"ledfx-senders",
                 "version": VERSION.encode(),
-                "abi": b"py3" if publisher.policy.wheel_targets == "pure" else b"cp3",
+                "abi": b"py3" if publisher.config.wheel_targets == "pure" else b"cp3",
             }[kind],
             b"wrong",
         )
@@ -512,8 +506,9 @@ def test_prerelease_does_not_become_latest(tmp_path: Path, tag: str) -> None:
         REPO,
         tag,
         SHA,
-        policy=POLICY,
-        wheel_plan=native_plan(),
+        project=write_project(tmp_path / "project", version=version),
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + tag,
+        wheel_plan=native_plan(tmp_path / "project"),
         command=remote,
         fetch=remote.fetch,
     )
@@ -554,8 +549,8 @@ def test_cli_cannot_publish_from_manual_fork_or_branch(
         [
             "publish_release.py",
             "prepare",
-            "--policy",
-            str(POLICY),
+            "--project",
+            str(PROJECT),
             "--dist",
             str(tmp_path / "absent"),
             "--snapshot",
@@ -644,3 +639,104 @@ def test_higher_stable_draft_vetoes_latest(
 
     publisher.command = command
     assert publisher.latest(remote.release) is False
+
+
+@pytest.mark.parametrize(
+    "change", ["metadata", "settings", "symlink", "workflow", "old_snapshot"]
+)
+@pytest.mark.parametrize("phase", ["check_upload", "promote", "finalize"])
+def test_configuration_and_source_context_frozen_for_every_phase(
+    transaction: tuple[Publisher, Remote], tmp_path: Path, change: str, phase: str
+) -> None:
+    publisher, remote = transaction
+    publisher.prepare()
+    upload_pypi(publisher, remote)
+    if change in ("metadata", "settings"):
+        publisher.config_path.write_text(
+            publisher.config_path.read_text()
+            + (
+                "\n[project.scripts]\nexample='example:main'\n"
+                if change == "metadata"
+                else "\n[tool.release-ci]\ngithub-distributions=false\n"
+            )
+        )
+    elif change == "symlink":
+        saved = tmp_path / "saved.toml"
+        publisher.config_path.rename(saved)
+        publisher.config_path.symlink_to(saved)
+    elif change == "workflow":
+        publisher = Publisher(
+            publisher.dist,
+            publisher.snapshot,
+            REPO,
+            "v" + VERSION,
+            SHA,
+            project=publisher.config_path.parent,
+            workflow_ref=REPO + "/.github/workflows/other.yml@refs/tags/v" + VERSION,
+            wheel_plan=native_plan(publisher.config_path.parent)
+            if publisher.config.wheel_targets == "cibuildwheel"
+            else None,
+            command=remote,
+            fetch=remote.fetch,
+        )
+    else:
+        snapshot = table(decode(publisher.snapshot.read_bytes()))
+        snapshot["policy_sha256"] = snapshot.pop("pyproject_sha256")
+        publisher.snapshot.write_text(json.dumps(snapshot))
+    with pytest.raises(PublicationError):
+        {
+            "check_upload": publisher.check_upload,
+            "promote": publisher.promote,
+            "finalize": publisher.finalize,
+        }[phase]()
+    assert not remote.writes
+
+
+@pytest.mark.parametrize("kind", ["static", "dynamic", "mismatch"])
+@pytest.mark.parametrize("tag", ["0.3.0", "v0.3.0"])
+def test_metadata_version_and_tag_prefix_derive_without_config_switches(
+    tmp_path: Path, kind: str, tag: str
+) -> None:
+    dist = tmp_path / "dist"
+    distributions(dist, pure=True)
+    project = write_project(
+        tmp_path / "project",
+        pure=True,
+        version="0.4.0" if kind == "mismatch" else VERSION,
+    )
+    if kind == "dynamic":
+        path = project / "pyproject.toml"
+        path.write_text(
+            path.read_text().replace('version = "0.3.0"', 'dynamic = ["version"]')
+        )
+    remote = Remote()
+    remote.release["tag_name"] = tag
+    if kind == "mismatch":
+        with pytest.raises(PublicationError, match="Static project version"):
+            Publisher(
+                dist,
+                tmp_path / "snapshot",
+                REPO,
+                tag,
+                SHA,
+                project=project,
+                workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + tag,
+                command=remote,
+                fetch=remote.fetch,
+            )
+        assert not remote.commands
+    else:
+        publisher = Publisher(
+            dist,
+            tmp_path / "snapshot",
+            REPO,
+            tag,
+            SHA,
+            project=project,
+            workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + tag,
+            command=remote,
+            fetch=remote.fetch,
+        )
+        publisher.prepare()
+        upload_pypi(publisher, remote)
+        publisher.finalize()

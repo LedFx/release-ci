@@ -11,7 +11,8 @@ from release_ci.common import PublicationError, array, decode, string, table
 from release_ci.planner import plan
 from release_ci.publisher import Publisher
 from release_ci.targets import WheelPlan
-from tests.test_transaction import POLICY, REPO, SHA, VERSION, Remote, distributions
+from tests.project import write_project
+from tests.test_transaction import REPO, SHA, VERSION, Remote, distributions
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests/fixtures/planning"
@@ -25,6 +26,7 @@ def selected(*identifiers: str) -> WheelPlan:
             "source_sha": SHA,
             "cibuildwheel": "4.2.1",
             "targets": list(identifiers),
+            "pyproject_sha256": "0" * 64,
         },
         SHA,
     )
@@ -90,7 +92,7 @@ def test_python_and_platform_edits_automatically_change_real_plan(
             "macosx_arm64",
         )
     }
-    # Add a supported platform once; no wheel policy or version list changes.
+    # Add a supported platform once; no wheel config or version list changes.
     config.write_text(
         config.read_text().replace(" *-win_arm64", "")
         + """
@@ -218,10 +220,8 @@ def test_bad_build_rows_and_selector_environment_fail(
 def planned_transaction(tmp_path: Path) -> tuple[Publisher, Remote, str, Path]:
     dist = tmp_path / "dist"
     distributions(dist)
-    value = table(decode(POLICY.read_bytes()))
-    policy = tmp_path / "policy.json"
-    policy.write_text(json.dumps(value))
-    _, expected = plan(FIXTURES / "ledfx-senders", SHA)
+    config = write_project(tmp_path / "project")
+    _, expected = plan(config, SHA)
     serialized = json.dumps(expected.value())
     remote = Remote()
     return (
@@ -231,14 +231,15 @@ def planned_transaction(tmp_path: Path) -> tuple[Publisher, Remote, str, Path]:
             REPO,
             "v" + VERSION,
             SHA,
-            policy=policy,
+            project=config,
+            workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + "v" + VERSION,
             wheel_plan=serialized,
             command=remote,
             fetch=remote.fetch,
         ),
         remote,
         serialized,
-        policy,
+        config,
     )
 
 
@@ -262,7 +263,7 @@ def test_planned_transaction_freezes_plan_and_retries(tmp_path: Path) -> None:
 def test_planned_transaction_rejects_changes_before_remote_writes(
     tmp_path: Path, change: str
 ) -> None:
-    publisher, remote, serialized, policy = planned_transaction(tmp_path)
+    publisher, remote, serialized, config = planned_transaction(tmp_path)
     if change in ("plan", "source"):
         publisher.prepare()
         remote.pypi = publisher.local_inputs()
@@ -277,7 +278,11 @@ def test_planned_transaction_rejects_changes_before_remote_writes(
                 REPO,
                 "v" + VERSION,
                 SHA,
-                policy=policy,
+                project=config,
+                workflow_ref=REPO
+                + "/.github/workflows/ci.yml@refs/tags/"
+                + "v"
+                + VERSION,
                 wheel_plan=json.dumps(value),
                 command=remote,
                 fetch=remote.fetch,
@@ -289,19 +294,25 @@ def test_planned_transaction_rejects_changes_before_remote_writes(
             for path in publisher.dist.glob("*macosx*"):
                 path.unlink()
         elif change == "collision":
-            value = table(decode(policy.read_bytes()))
-            value["github_assets"] = {
-                "distributions": False,
-                "files": [wheel.name.replace(VERSION, "{version}")],
-            }
-            policy.write_text(json.dumps(value))
+            write_project(
+                config,
+                settings={
+                    "github-distributions": False,
+                    "assets": [wheel.name.replace(VERSION, "{version}")],
+                },
+            )
+            serialized = json.dumps(plan(config, SHA)[1].value())
             publisher = Publisher(
                 publisher.dist,
                 publisher.snapshot,
                 REPO,
                 "v" + VERSION,
                 SHA,
-                policy=policy,
+                project=config,
+                workflow_ref=REPO
+                + "/.github/workflows/ci.yml@refs/tags/"
+                + "v"
+                + VERSION,
                 wheel_plan=serialized,
                 command=remote,
                 fetch=remote.fetch,
@@ -380,3 +391,69 @@ def test_failed_enumeration_reports_upstream_configuration_error(
     (tmp_path / "pyproject.toml").write_text(text)
     with pytest.raises(PublicationError, match="not-a-real-option"):
         plan(tmp_path, SHA)
+
+
+def test_planner_shares_strict_release_settings_and_binds_full_config(
+    tmp_path: Path,
+) -> None:
+    project = write_project(
+        tmp_path / "project",
+        settings={"github-distributions": False, "assets": ["app-{version}.zip"]},
+    )
+    _, expected = plan(project, SHA)
+    from release_ci.common import digest
+
+    assert expected.pyproject_sha256 == digest(project / "pyproject.toml")
+    (project / "pyproject.toml").write_text(
+        (project / "pyproject.toml")
+        .read_text()
+        .replace("github-distributions = false", "github-distributions = true")
+    )
+    with pytest.raises(PublicationError, match="Wheel plan differs"):
+        Publisher(
+            tmp_path / "dist",
+            tmp_path / "snapshot",
+            REPO,
+            "v" + VERSION,
+            SHA,
+            project=project,
+            workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/v" + VERSION,
+            wheel_plan=json.dumps(expected.value()),
+        )
+    (project / "pyproject.toml").write_text(
+        (project / "pyproject.toml")
+        .read_text()
+        .replace("github-distributions = true", "unknown-setting = true")
+    )
+    with pytest.raises(PublicationError, match="Unknown tool.release-ci"):
+        plan(project, SHA)
+
+
+def test_source_matching_plan_cannot_omit_or_invent_a_configured_row(
+    tmp_path: Path,
+) -> None:
+    project = write_project(tmp_path / "project")
+    _, original = plan(project, SHA)
+    for change in ("missing", "extra"):
+        value = original.value()
+        value["targets"] = (
+            [
+                target.identifier
+                for target in original.targets
+                if target.family != "macosx"
+            ]
+            if change == "missing"
+            else [target.identifier for target in original.targets]
+            + ["cp311-win_arm64"]
+        )
+        with pytest.raises(PublicationError, match="configured target rows"):
+            Publisher(
+                tmp_path / "dist",
+                tmp_path / "snapshot",
+                REPO,
+                "v" + VERSION,
+                SHA,
+                project=project,
+                workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/v" + VERSION,
+                wheel_plan=json.dumps(value),
+            )

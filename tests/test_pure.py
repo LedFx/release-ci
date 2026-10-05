@@ -9,26 +9,27 @@ from pathlib import Path
 import pytest
 
 from release_ci.archives import distributions
-from release_ci.common import PublicationError, decode, table
-from release_ci.policy import Policy, Version, parse_version, render
+from release_ci.common import PublicationError, decode
+from release_ci.config import Config, Version, parse_version, render
 from release_ci.publisher import Publisher
 from release_ci.targets import WheelPlan
+from tests.project import ROOT, write_project
 from tests.test_transaction import SHA, native_plan
 
-POLICY = Path(__file__).resolve().parents[1] / "examples/audio-hotplug.json"
+PROJECT = ROOT / "examples/audio-hotplug"
 
 
-def pure_archives(directory: Path, policy: Policy, version: Version) -> None:
+def pure_archives(directory: Path, config: Config, version: Version) -> None:
     metadata = (
-        f"Metadata-Version: 2.4\nName: {policy.project}\nVersion: {version.package}\n"
+        f"Metadata-Version: 2.4\nName: {config.project}\nVersion: {version.package}\n"
     )
-    stem = f"{policy.wheel_stem}-{version.package}"
+    stem = f"{config.wheel_stem}-{version.package}"
     with zipfile.ZipFile(directory / (stem + "-py3-none-any.whl"), "w") as wheel:
         wheel.writestr(stem + ".dist-info/METADATA", metadata)
         wheel.writestr(
             stem + ".dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n"
         )
-    name = render(policy.sdist, version)
+    name = render(config.sdist, version)
     with tarfile.open(directory / name, "w:gz") as archive:
         member = tarfile.TarInfo(name.removesuffix(".tar.gz") + "/PKG-INFO")
         content = metadata.encode()
@@ -40,9 +41,9 @@ def pure_archives(directory: Path, policy: Policy, version: Version) -> None:
     "change", [None, "missing", "extra", "native", "malformed", "sdist", "mixed_plan"]
 )
 def test_pure_archive_coverage(tmp_path: Path, change: str | None) -> None:
-    policy = Policy.load(POLICY)
-    version = parse_version("v1.2.3", "v")
-    pure_archives(tmp_path, policy, version)
+    config = Config.load(PROJECT)
+    version = parse_version("v1.2.3")
+    pure_archives(tmp_path, config, version)
     wheel = next(tmp_path.glob("*.whl"))
     if change == "missing":
         wheel.unlink()
@@ -63,10 +64,10 @@ def test_pure_archive_coverage(tmp_path: Path, change: str | None) -> None:
         else WheelPlan.pure(SHA)
     )
     if change is None:
-        assert len(distributions(tmp_path, policy, version, WheelPlan.pure(SHA))) == 2
+        assert len(distributions(tmp_path, config, version, WheelPlan.pure(SHA))) == 2
     else:
         with pytest.raises(PublicationError):
-            distributions(tmp_path, policy, version, effective)
+            distributions(tmp_path, config, version, effective)
 
 
 @pytest.mark.parametrize(
@@ -82,10 +83,7 @@ def test_pure_archive_coverage(tmp_path: Path, change: str | None) -> None:
 def test_inappropriate_or_missing_plans_fail_before_commands(
     tmp_path: Path, kind: str, serialized: str | None
 ) -> None:
-    value = table(decode(POLICY.read_bytes()))
-    table(value["python"])["wheel_targets"] = kind
-    policy = tmp_path / "policy.json"
-    policy.write_text(json.dumps(value))
+    config = write_project(tmp_path / "project", pure=kind == "pure", version="1.2.3")
     with pytest.raises(PublicationError):
         Publisher(
             tmp_path,
@@ -93,7 +91,8 @@ def test_inappropriate_or_missing_plans_fail_before_commands(
             "LedFx/audio-hotplug",
             "v1.2.3",
             SHA,
-            policy=policy,
+            project=config,
+            workflow_ref="LedFx/audio-hotplug/.github/workflows/publish.yml@refs/tags/v1.2.3",
             wheel_plan=serialized,
         )
 

@@ -25,8 +25,8 @@ from .common import (
     string,
     table,
 )
+from .config import Config, caller_workflow, parse_version
 from .oci import OCI
-from .policy import Policy, parse_version
 from .targets import WheelPlan
 
 
@@ -55,39 +55,52 @@ class Publisher:
         tag: str,
         sha: str,
         *,
-        policy: Path,
+        project: Path,
+        workflow_ref: str,
         assets: Path | None = None,
         docker_digests: Path | None = None,
         wheel_plan: str | None = None,
         command: Command = run_command,
         fetch: Fetch | None = None,
     ) -> None:
-        self.policy_path = policy
-        self.policy = Policy.load(policy)
-        self.policy_digest = digest(policy)
-        if repository != self.policy.repository or not re.fullmatch(
-            r"[0-9a-f]{40}", sha
+        self.config_path = project / "pyproject.toml"
+        self.config_digest = digest(self.config_path)
+        self.config = Config.load(project)
+        if digest(self.config_path) != self.config_digest:
+            raise PublicationError("pyproject.toml changed while loading configuration")
+        self.workflow = caller_workflow(repository, workflow_ref, tag)
+        self.workflow_ref = workflow_ref
+        if not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise PublicationError("Invalid source SHA")
+        self.parsed = parse_version(tag)
+        if (
+            self.config.static_version is not None
+            and parse_version(self.config.static_version).package != self.parsed.package
         ):
-            raise PublicationError("Invalid canonical repository or source SHA")
-        self.parsed = parse_version(tag, self.policy.tag_prefix)
-        if self.policy.wheel_targets == "pure":
+            raise PublicationError("Static project version differs from release tag")
+        if self.config.wheel_targets == "pure":
             if wheel_plan is not None:
                 raise PublicationError(
-                    "Pure wheel policy does not accept a pre-build wheel plan"
+                    "Pure wheel config does not accept a pre-build wheel plan"
                 )
             self.wheel_plan = WheelPlan.pure(sha)
         else:
             if wheel_plan is None:
                 raise PublicationError(
-                    "Cibuildwheel policy requires a pre-build wheel plan"
+                    "Cibuildwheel config requires a pre-build wheel plan"
                 )
             self.wheel_plan = WheelPlan.load(decode(wheel_plan), sha)
+            if self.wheel_plan.pyproject_sha256 != self.config_digest:
+                raise PublicationError(
+                    "Wheel plan differs from pyproject.toml configuration"
+                )
+            self.wheel_plan.validate_rows(self.config.build_rows)
         self.dist, self.snapshot, self.assets = dist, snapshot, assets
         self.repo, self.tag, self.sha = repository, tag, sha
         self.version = self.parsed.package
         self.command = command
-        self.fetch = fetch or (lambda version: fetch_pypi(self.policy.project, version))
-        self.oci = OCI(self.policy.oci, docker_digests, self.parsed, sha, command)
+        self.fetch = fetch or (lambda version: fetch_pypi(self.config.project, version))
+        self.oci = OCI(self.config.oci, docker_digests, self.parsed, sha, command)
 
     def api(self, endpoint: str, *options: str) -> object:
         return decode(
@@ -125,13 +138,16 @@ class Publisher:
         raise PublicationError("Remote tag does not resolve to the tested commit")
 
     def local_inputs(self) -> Hashes:
-        if digest(self.policy_path) != self.policy_digest:
-            raise PublicationError("Policy changed during transaction")
-        return distributions(self.dist, self.policy, self.parsed, self.wheel_plan)
+        if (
+            self.config_path.is_symlink()
+            or digest(self.config_path) != self.config_digest
+        ):
+            raise PublicationError("Config changed during transaction")
+        return distributions(self.dist, self.config, self.parsed, self.wheel_plan)
 
     def asset_inputs(self) -> Hashes:
-        result = self.local_inputs() if self.policy.github_distributions else {}
-        extras = files(self.assets, self.policy.asset_names(self.parsed))
+        result = self.local_inputs() if self.config.github_distributions else {}
+        extras = files(self.assets, self.config.asset_names(self.parsed))
         if set(result) & set(extras):
             raise PublicationError("Duplicate GitHub asset filename")
         return result | extras
@@ -212,7 +228,7 @@ class Publisher:
                 # Higher stable drafts may already have promoted OCI latest.
                 tag = string(other.get("tag_name"))
                 try:
-                    version = parse_version(tag, self.policy.tag_prefix)
+                    version = parse_version(tag)
                 except PublicationError:
                     continue
                 if version.stable is not None and version.stable > self.parsed.stable:
@@ -231,8 +247,11 @@ class Publisher:
             "prerelease": release["prerelease"],
             "hashes": hashes,
             "assets": self.asset_inputs(),
-            "policy_sha256": digest(self.policy_path),
-            "workflow": self.policy.workflow,
+            "pyproject_sha256": digest(self.config_path),
+            "workflow": self.workflow,
+            "workflow_ref": self.workflow_ref,
+            "project": self.config.project,
+            "version": self.version,
             "oci_sources": self.oci.sources(),
         }
         result["wheel_plan"] = self.wheel_plan.value()
@@ -271,7 +290,7 @@ class Publisher:
             table(decode(self.snapshot.read_text())) != snapshot
             or self.local_inputs() != hashes
             or self.asset_inputs() != snapshot.get("assets")
-            or digest(self.policy_path) != snapshot.get("policy_sha256")
+            or digest(self.config_path) != snapshot.get("pyproject_sha256")
             or self.oci.sources() != snapshot.get("oci_sources")
             or self.wheel_plan.value() != snapshot.get("wheel_plan")
         ):
@@ -300,7 +319,7 @@ class Publisher:
             complete = self.verify_pypi(hashes, complete=True)
             self.verify_attestations(hashes)
             self.oci.verify_attestations(
-                self.oci.source_children(), self.repo, self.policy.workflow, self.tag
+                self.oci.source_children(), self.repo, self.workflow, self.tag
             )
         return {
             "already_published": not flag(release["draft"]),
@@ -329,7 +348,7 @@ class Publisher:
                     "--repo",
                     self.repo,
                     "--signer-workflow",
-                    f"{self.repo}/{self.policy.workflow}",
+                    f"{self.repo}/{self.workflow}",
                     "--source-digest",
                     self.sha,
                     "--source-ref",
@@ -346,7 +365,7 @@ class Publisher:
         attested_digests = self.oci.verify_attestations(
             self.oci.checked_children(snapshot),
             self.repo,
-            self.policy.workflow,
+            self.workflow,
             self.tag,
         )
         release = self.recheck(snapshot, hashes)

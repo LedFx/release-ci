@@ -47,7 +47,7 @@ jobs:
         uses: ./actions/release
         with:
           phase: prepare
-          policy: examples/ledfx-senders.json
+          project: tests/fixtures/planning/ledfx-senders
           dist: absent-distributions
           snapshot: ${{ runner.temp }}/unauthorized-snapshot.json
       - name: Require expected denial

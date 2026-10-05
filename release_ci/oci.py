@@ -14,7 +14,7 @@ from .common import (
     string,
     table,
 )
-from .policy import Image, Version
+from .config import Image, Version
 
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 Children = dict[str, dict[str, str]]
@@ -41,7 +41,7 @@ class OCI:
     def sources(self) -> Children:
         if not self.images:
             if self.directory is not None:
-                raise PublicationError("OCI directory supplied without OCI policy")
+                raise PublicationError("OCI directory supplied without OCI config")
             return {}
         directory = self.directory
         if directory is None or directory.is_symlink() or not directory.is_dir():
@@ -53,7 +53,7 @@ class OCI:
         if {p.name for p in paths} != {
             f"docker-{arch}.txt" for arch in architectures
         } or any(p.is_symlink() or not p.is_file() for p in paths):
-            raise PublicationError("OCI receipt files differ from policy")
+            raise PublicationError("OCI receipt files differ from config")
         sources: Children = {image.image: {} for image in self.images}
         for arch in architectures:
             for ref in (directory / f"docker-{arch}.txt").read_text().split():
@@ -70,7 +70,7 @@ class OCI:
                 sources[image][arch] = f"{image}@{digest}"
         for image in self.images:
             if set(sources[image.image]) != {p.split("/")[1] for p in image.platforms}:
-                raise PublicationError("OCI source platforms differ from policy")
+                raise PublicationError("OCI source platforms differ from config")
         return sources
 
     def inspect(

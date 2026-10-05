@@ -15,7 +15,7 @@ def main() -> int:
     parser.add_argument(
         "phase", choices=("prepare", "check-upload", "promote", "finalize")
     )
-    parser.add_argument("--policy", type=Path, required=True)
+    parser.add_argument("--project", type=Path, default=Path("."))
     parser.add_argument("--dist", type=Path, required=True)
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--assets", type=Path)
@@ -37,7 +37,13 @@ def main() -> int:
             )
         workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
         temporary = Path(os.environ["RUNNER_TEMP"]).resolve()
-        for path in (args.policy, args.dist, args.assets, args.docker_digests):
+        for path in (
+            args.project,
+            args.project / "pyproject.toml",
+            args.dist,
+            args.assets,
+            args.docker_digests,
+        ):
             if path is not None and not path.resolve().is_relative_to(workspace):
                 raise PublicationError("Input path must be inside caller workspace")
         if (
@@ -51,15 +57,12 @@ def main() -> int:
             os.environ.get("GITHUB_REPOSITORY", ""),
             tag,
             os.environ.get("GITHUB_SHA", ""),
-            policy=args.policy,
+            project=args.project,
+            workflow_ref=os.environ.get("GITHUB_WORKFLOW_REF", ""),
             assets=args.assets,
             docker_digests=args.docker_digests,
             wheel_plan=args.wheel_plan,
         )
-        workflow = os.environ.get("GITHUB_WORKFLOW_REF", "")
-        expected = f"{publisher.repo}/{publisher.policy.workflow}@refs/tags/{tag}"
-        if workflow != expected:
-            raise PublicationError("Caller workflow does not match policy identity")
         if args.phase == "promote":
             outputs: dict[str, str | bool] = {
                 "image_digests": json.dumps(publisher.promote(), sort_keys=True)

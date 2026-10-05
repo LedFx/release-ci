@@ -2,8 +2,8 @@
 # Replace REVIEWED_SHARED_SHA and vNEXT_RELEASE with one released SHA/version.
 # Retains existing release/lint/Rust/installed-wheel/sdist/aggregate gates.
 # Merge tool.release-ci.targets and wheel-build into pyproject.toml/uv.lock,
-# copy release-policy.json to .github/release-policy.json, and migrate the
-# consumer policy regression test from fixed wheel counts to planned mode.
+# use the existing pyproject.toml target rows and migrate the
+# consumer regression test from fixed wheel counts to planned coverage.
 name: CI
 
 on:
@@ -288,7 +288,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-          sparse-checkout: .github
+          sparse-checkout: |
+            .github
+            pyproject.toml
+          sparse-checkout-cone-mode: false
           path: release-tools
       - name: Mint scoped publication token
         id: release-token
@@ -307,7 +310,7 @@ jobs:
         uses: LedFx/release-ci/actions/release@REVIEWED_SHARED_SHA # vNEXT_RELEASE
         with:
           phase: prepare
-          policy: release-tools/.github/release-policy.json
+          project: release-tools
           dist: dist
           snapshot: ${{ runner.temp }}/sender-release-snapshot.json
           wheel-plan: ${{ needs.plan.outputs.wheel-plan }}
@@ -326,7 +329,7 @@ jobs:
         uses: LedFx/release-ci/actions/release@REVIEWED_SHARED_SHA # vNEXT_RELEASE
         with:
           phase: check-upload
-          policy: release-tools/.github/release-policy.json
+          project: release-tools
           dist: dist
           snapshot: ${{ runner.temp }}/sender-release-snapshot.json
           wheel-plan: ${{ needs.plan.outputs.wheel-plan }}
@@ -341,7 +344,7 @@ jobs:
         uses: LedFx/release-ci/actions/release@REVIEWED_SHARED_SHA # vNEXT_RELEASE
         with:
           phase: finalize
-          policy: release-tools/.github/release-policy.json
+          project: release-tools
           dist: dist
           snapshot: ${{ runner.temp }}/sender-release-snapshot.json
           wheel-plan: ${{ needs.plan.outputs.wheel-plan }}

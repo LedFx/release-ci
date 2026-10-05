@@ -6,13 +6,12 @@ import os
 import re
 import subprocess
 import sys
-import tomllib
 from importlib.metadata import version
 from pathlib import Path
 
-from .common import PublicationError, array, string, table
-from .policy import keys
-from .targets import ARCHES, Target, WheelPlan
+from .common import PublicationError, digest
+from .config import Config, read_project, release_settings, target_rows
+from .targets import Target, WheelPlan
 
 
 def plan(project: Path, source_sha: str) -> tuple[dict[str, object], WheelPlan]:
@@ -21,12 +20,11 @@ def plan(project: Path, source_sha: str) -> tuple[dict[str, object], WheelPlan]:
     path = project / "pyproject.toml"
     if path.is_symlink() or not path.is_file():
         raise PublicationError("Build configuration must be a regular pyproject.toml")
-    config = tomllib.loads(path.read_text())
-    rows = array(
-        keys(table(config.get("tool")).get("release-ci"), {"targets"})["targets"]
-    )
+    config_digest = digest(path)
+    Config.load(project)
+    rows = target_rows(release_settings(read_project(project)))
     if not rows:
-        raise PublicationError("At least one build row is required")
+        raise PublicationError("At least one native build row is required")
     selectors = ("BUILD", "SKIP", "ENABLE", "ARCHS", "PROJECT_REQUIRES_PYTHON")
     if any(
         k == "CIBW_" + option or k.startswith("CIBW_" + option + "_")
@@ -41,20 +39,8 @@ def plan(project: Path, source_sha: str) -> tuple[dict[str, object], WheelPlan]:
     environment = {k: v for k, v in os.environ.items() if not k.startswith("CIBW_")}
     matrix: list[dict[str, str]] = []
     identifiers: list[str] = []
-    for value in rows:
-        row = {k: string(v) for k, v in table(value).items()}
-        if not {"platform", "arch", "runner"}.issubset(row) or any(
-            not re.fullmatch(r"[a-z][a-z0-9_-]*", k) or not v or "\n" in v or "\r" in v
-            for k, v in row.items()
-        ):
-            raise PublicationError(
-                "Build rows require platform/arch/runner and string metadata"
-            )
+    for row in rows:
         host, arch = row["platform"], row["arch"]
-        if host not in ARCHES or arch not in ARCHES[host]:
-            raise PublicationError(
-                "Build rows require a supported explicit platform/architecture"
-            )
         result = subprocess.run(
             [
                 sys.executable,
@@ -105,11 +91,14 @@ def plan(project: Path, source_sha: str) -> tuple[dict[str, object], WheelPlan]:
                 )
         identifiers.extend(selected)
         matrix.append(row)
+    if path.is_symlink() or digest(path) != config_digest:
+        raise PublicationError("pyproject.toml changed during planning")
     wheel_plan = WheelPlan.load(
         {
             "schema_version": 1,
             "wheel_targets": "cibuildwheel",
             "source_sha": source_sha,
+            "pyproject_sha256": config_digest,
             "cibuildwheel": version("cibuildwheel"),
             "targets": identifiers,
         },
