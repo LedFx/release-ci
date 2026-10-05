@@ -7,7 +7,7 @@ dependencies = []
 license = "GPL-3.0-or-later"
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "ruff==0.16.8", "actionlint-py==1.7.12.24", "shellcheck-py==0.11.0.1", "zizmor==1.30.1", "prek>=0.5.3", "pyrefly==1.3.1"]
+dev = ["pytest>=8,<10", "ruff==0.16.10", "actionlint-py==1.7.12.24", "shellcheck-py==0.11.0.1", "zizmor==1.30.1", "prek>=0.5.3", "pyrefly==1.3.1"]
 
 [tool.uv]
 required-version = ">=0.12.12"
