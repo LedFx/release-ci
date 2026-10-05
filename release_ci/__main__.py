@@ -20,7 +20,10 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--assets", type=Path)
     parser.add_argument("--docker-digests", type=Path)
-    parser.add_argument("--wheel-plan")
+    parser.add_argument(
+        "--wheel-plan",
+        help="Pre-build JSON plan required for cibuildwheel; omit for pure",
+    )
     args = parser.parse_args()
     try:
         tag = os.environ.get("GITHUB_REF_NAME", "")

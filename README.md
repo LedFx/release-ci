@@ -4,7 +4,7 @@ A SHA-pinned composite action and typed Python core for publishing tested Python
 
 Production publication stays in each consumer's existing workflow and environment. The shared action is a step in that job; it is not a reusable workflow. [PyPI does not currently support reusable workflows as Trusted Publishers](https://docs.pypi.org/trusted-publishers/troubleshooting/#reusable-workflows-on-github).
 
-**Start here for native packages:** [maintaining wheel support](docs/native-wheels.md). The opt-in planner derives both the build matrix and required targets before builds from your existing `pyproject.toml`. Python or platform changes then need no second exact wheel-tag matrix. LedFx and audio-hotplug keep schema 1's single `py3-none-any` wheel; their application/test matrices do not describe wheel outputs.
+**Start here for native packages:** [maintaining wheel support](docs/native-wheels.md). The native planner derives both the build matrix and required targets before builds from your existing `pyproject.toml`. Python or platform changes then need no second exact wheel-tag matrix. All six consumers use schema 2. LedFx and audio-hotplug select `wheel_targets: pure`, requiring one `py3-none-any` wheel without a planner job, build matrix, or cibuildwheel installation.
 
 ## Caller contract
 
@@ -12,14 +12,14 @@ Keep your build/test gates, same-run artifact downloads, explicit canonical tag-
 
 | Example policy | Caller workflow | Existing environment | Distributions |
 | --- | --- | --- | --- |
-| [ledfx-senders](examples/ledfx-senders.json) | `ci.yml` | `pypi` | 35 wheels + sdist |
+| [ledfx-senders](examples/ledfx-senders.json) | `ci.yml` | `pypi` | Generated native coverage + sdist |
 | [LedFx](examples/ledfx.json) | `ci.yml` | `production` | One wheel + sdist; four separate frozen GitHub assets; two OCI registries |
-| [aubio-ledfx](examples/aubio-ledfx.json) | `build.yml` | `pypi` | 25 wheels + sdist |
+| [aubio-ledfx](examples/aubio-ledfx.json) | `build.yml` | `pypi` | Generated native coverage + sdist |
 | [audio-hotplug](examples/audio-hotplug.json) | `publish.yml` | `pypi` | One wheel + sdist |
-| [pyfastnoiselite-ledfx](examples/pyfastnoiselite-ledfx.json) | `build.yml` | `pypi` | Nine ABI3 wheels + sdist |
-| [samplerate-ledfx](examples/samplerate-ledfx.json) | `ci.yml` | `pypi` | 25 wheels + sdist; repository is `python-samplerate-ledfx` |
+| [pyfastnoiselite-ledfx](examples/pyfastnoiselite-ledfx.json) | `build.yml` | `pypi` | Generated native coverage with ABI3 reuse + sdist |
+| [samplerate-ledfx](examples/samplerate-ledfx.json) | `ci.yml` | `pypi` | Generated native coverage + sdist; repository is `python-samplerate-ledfx` |
 
-Policies are explicit examples matched against retained public release filename/metadata fixtures, not permission to change a build matrix. Confirm them against the actual source commit before migration. The audio-hotplug fixture is published 0.1.0: 0.2.0 was unavailable when checked, and its PyPI Trusted Publisher was not yet configured. Prepare its migration PR, but an administrator must register the existing `LedFx/audio-hotplug`, `publish.yml`, `pypi` identity before a real release can succeed.
+Policies select a package kind; tests validate coverage against real planner expectations or the constant pure target using retained public release filename/metadata fixtures. Confirm them against the actual source commit before migration. The audio-hotplug fixture is published 0.1.0: 0.2.0 was unavailable when checked, and its PyPI Trusted Publisher was not yet configured. Prepare its migration PR, but an administrator must register the existing `LedFx/audio-hotplug`, `publish.yml`, `pypi` identity before a real release can succeed.
 
 Aubio's manual TestPyPI job remains a separate unchanged caller lane. This production core accepts only canonical tag pushes and has no TestPyPI or arbitrary upload-URL setting. Preserve samplerate's `!cancelled()` plus explicit successful dependency checks: implicit `success()` can suppress a release when a transitive optional job was intentionally skipped. Keep each project's existing version cross-checks (Meson/vcpkg, SCM tags, CMake or package metadata) before builds.
 
@@ -27,9 +27,9 @@ Download selectors also remain local: aubio needs both `wheels-*` and `cibw-sdis
 
 ## Action interface
 
-Use `LedFx/release-ci/actions/release@<reviewed full 40-character commit SHA>`. Moving version tags are for humans, not consumer pins. Include its released `# vX.Y.Z` comment for Renovate tracking. Adopt planned mode with a reviewed feature release and its SHA/version together.
+Use `LedFx/release-ci/actions/release@<reviewed full 40-character commit SHA>`. Moving version tags are for humans, not consumer pins. Include its released `# vX.Y.Z` comment for Renovate tracking. Upgrade all six consumers to the 0.3 schema and reviewed released SHA/version together.
 
-Required inputs: `phase`, `policy`, `dist`, `snapshot`. `policy` and `dist` are paths in the caller workspace; `snapshot` is an owned path under `runner.temp`. Optional `assets` and `docker-digests` are caller workspace paths and must match the policy. Schema 2 additionally requires the planning job's `wheel-plan` JSON output on every phase. `GH_TOKEN` is supplied explicitly through the step environment. Publication runtime: hosted Linux, Python 3.11+, `gh`; Docker/buildx and registry logins only for OCI policies. No publication runtime dependency installation occurs.
+Required inputs: `phase`, `policy`, `dist`, `snapshot`. `policy` and `dist` are paths in the caller workspace; `snapshot` is an owned path under `runner.temp`. Optional `assets` and `docker-digests` are caller workspace paths and must match the policy. Native `wheel_targets: cibuildwheel` policies require the planning job's `wheel-plan` JSON output on every phase. Pure policies omit that input; the publisher derives their source-bound constant target. `GH_TOKEN` is supplied explicitly through the step environment. Publication runtime: hosted Linux, Python 3.11+, `gh`; Docker/buildx and registry logins only for OCI policies. No publication runtime dependency installation occurs.
 
 | Phase | Effect | Outputs |
 | --- | --- | --- |
@@ -40,7 +40,7 @@ Required inputs: `phase`, `policy`, `dist`, `snapshot`. `policy` and `dist` are 
 
 Boolean outputs are strings `true`/`false` in Actions. Each phase emits only its listed outputs. `image_digests` can be read with `fromJSON(steps.promote.outputs.image_digests)['ghcr.io/ledfx/ledfx']`.
 
-Typical package sequence in the caller job:
+Pure package sequence in the caller job (native callers additionally pass the same generated `wheel-plan` on every phase; see the complete [native workflow](examples/planned-wheels/ci.yml)):
 
 ```yaml
 # Existing job: needs all required gates, canonical tag-push condition,
@@ -90,13 +90,17 @@ Always retain the snapshot and `${{ steps.provenance.outputs.bundle-path }}` wit
 
 LedFx additionally attests `assets/*`, logs in to its two registries, calls `promote`, attests each returned image digest with `push-to-registry: true`, then calls `finalize`. Pass the same assets/digest paths to every phase and retain all attestation bundles. The core verifies file and OCI attestations against the caller repository/workflow, tested source SHA, tag ref and hosted runner before finalization. Never change the verifier to trust the shared action repository as the artifact's source.
 
-## Policy schema 1
+## Policy schema 2
 
 All fields are required, including empty `oci`/asset lists; unknown or duplicate keys fail. See the complete JSON examples. `repository` and `workflow` must match event identity. `tag_prefix` is `v` or empty. Versions accept three-component stable versions, PEP 440 `aN`, `bN`, `rcN`, and corresponding `-alpha.N`, `-beta.N`, `-rc.N` tags; local/dev/post releases and ambiguous leading zeros are rejected.
 
-`python.project` is compared using standard normalized project spelling. `wheel_stem` preserves exact filenames; `wheel_tags` is an explicit list, including compressed platform tags. The expanded WHEEL metadata tag set must match the filename. `sdist` is an exact name template. Every expected wheel and the sdist is required; no extra files or symlinks. Archive metadata must match project and version. Package licenses are not rewritten.
+`python.project` is compared using standard normalized project spelling. `wheel_stem` preserves exact filenames. `python.wheel_targets` is either `"pure"` or `"cibuildwheel"`; these are the two supported package kinds. The expanded WHEEL metadata tag set must match the filename. `sdist` is an exact name template. Every required target and the sdist must be present; extra files and symlinks fail. Archive metadata must match project and version. Package licenses are not rewritten.
 
-Schema 2 replaces only `python.wheel_tags` with `"wheel_targets": "cibuildwheel"`. All other fields retain schema 1's contract; mixing modes fails. The pre-build plan must match the tested source SHA. [Target coverage rules and a complete workflow example](docs/native-wheels.md) explain ordinary/free-threaded CPython, ABI3 reuse, and repaired platform tags. Publication freezes the exact resulting filenames, hashes, and plan in the existing snapshot.
+The [LedFx](examples/ledfx.json) and [audio-hotplug](examples/audio-hotplug.json) policies show the pure kind, which requires exactly one `py3-none-any` wheel plus its sdist. No explicit plan input, planning job, wheel matrix, or cibuildwheel dependency is needed. Native policies require a generated pre-build plan matching the tested source SHA. [Coverage rules and a complete native workflow](docs/native-wheels.md) explain ordinary/free-threaded CPython, ABI3 reuse, and repaired platform tags.
+
+Both kinds use the same discovery, coverage, metadata, hash and snapshot pipeline. Every snapshot freezes exact filenames/hashes and a source-bound wheel-plan identity. Pure identity contains `schema_version: 1`, `source_sha`, `wheel_targets: "pure"`, and `targets: ["py3-none-any"]`, without a cibuildwheel version. Native plan identity additionally contains the installed cibuildwheel version and selected IDs. Plan schema 1 is independent of policy schema 2.
+
+Version 0.3 supports only policy schema 2. Schema 1 policies, `wheel_tags` lists, mixed policy forms and snapshots missing the new required plan identity are rejected. Upgrade policy and action pin together; rerun phases with the original matching source/artifacts and generated native plan. No previously created snapshot format is supported.
 
 `github_assets.distributions` selects whether distribution files are attached to GitHub; `files` lists other exact versioned filenames. Explicit asset names must never overlap distribution names, even when distribution attachment is disabled; this prevents ambiguity between bytes in the two directories. Only `{version}` (normalized Python version) and `{tag_version}` (prefix removed) placeholders are accepted. Frozen assets are hashed and attested; the core does not unpack or rebuild applications.
 

@@ -34,7 +34,7 @@ def test_version_normalization(version: str) -> None:
     ],
 )
 def test_asset_collision_uses_actual_expanded_package_and_tag_versions(
-    tag: str, placeholder: str, collides: bool
+    tmp_path: Path, tag: str, placeholder: str, collides: bool
 ) -> None:
     from dataclasses import replace
 
@@ -49,13 +49,18 @@ def test_asset_collision_uses_actual_expanded_package_and_tag_versions(
         asset_templates=(f"audio_hotplug-{placeholder}.tar.gz",),
     )
     version = parse_version(tag, "v")
+    from release_ci.archives import distributions
+    from release_ci.targets import WheelPlan
+    from tests.test_pure import pure_archives
+
+    pure_archives(tmp_path, policy, version)
     if collides:
         with pytest.raises(PublicationError, match="overlap"):
-            policy.distribution_names(version)
+            distributions(tmp_path, policy, version, WheelPlan.pure("1" * 40))
     else:
-        assert policy.distribution_names(version).isdisjoint(
-            policy.asset_names(version)
-        )
+        assert set(
+            distributions(tmp_path, policy, version, WheelPlan.pure("1" * 40))
+        ).isdisjoint(policy.asset_names(version))
 
 
 @pytest.mark.parametrize(
@@ -67,10 +72,10 @@ def test_unsupported_version_rejected(version: str) -> None:
 
 
 def test_every_fleet_policy_matches_independently_fetched_manifest() -> None:
-    from pathlib import Path
-
     from release_ci.common import array, decode, string, table
-    from release_ci.policy import Policy
+    from release_ci.planner import plan
+    from release_ci.policy import Policy, render
+    from release_ci.targets import WheelPlan
 
     root = Path(__file__).resolve().parents[1]
     for fixture in (root / "tests/fixtures").glob("*.json"):
@@ -79,8 +84,26 @@ def test_every_fleet_policy_matches_independently_fetched_manifest() -> None:
         obj = table(decode(fixture.read_bytes()))
         policy = Policy.load(root / "examples" / fixture.name)
         version = parse_version("v" + string(obj["version"]), "v")
-        assert policy.distribution_names(version) == {
-            string(n) for n in array(obj["filenames"])
+        names = {string(n) for n in array(obj["filenames"])}
+        config = (
+            "python-samplerate-ledfx"
+            if fixture.stem == "samplerate-ledfx"
+            else fixture.stem
+        )
+        expected = (
+            WheelPlan.pure("1" * 40)
+            if policy.wheel_targets == "pure"
+            else plan(root / "tests/fixtures/planning" / config, "1" * 40)[1]
+        )
+        expected.coverage(
+            {
+                n: n.removesuffix(".whl").split("-", 2)[2]
+                for n in names
+                if n.endswith(".whl")
+            }
+        )
+        assert names - {n for n in names if n.endswith(".whl")} == {
+            render(policy.sdist, version)
         }
 
 
@@ -93,7 +116,9 @@ def test_every_fleet_policy_matches_independently_fetched_manifest() -> None:
         "schema_bool",
         "template",
         "registry",
-        "empty_wheels",
+        "wheel_targets",
+        "legacy",
+        "mixed",
         "project",
         "duplicate_image",
     ],
@@ -117,8 +142,15 @@ def test_strict_policy_rejects_invalid_inputs(tmp_path: Path, mutation: str) -> 
         table(obj["python"])["sdist"] = "../{version}.tar.gz"
     elif mutation == "registry":
         obj["pypi_url"] = "https://test.pypi.org"
-    elif mutation == "empty_wheels":
-        table(obj["python"])["wheel_tags"] = []
+    elif mutation == "wheel_targets":
+        table(obj["python"])["wheel_targets"] = "auto"
+    elif mutation == "legacy":
+        obj["schema_version"] = 1
+        py = table(obj["python"])
+        del py["wheel_targets"]
+        py["wheel_tags"] = ["py3-none-any"]
+    elif mutation == "mixed":
+        table(obj["python"])["wheel_tags"] = ["py3-none-any"]
     elif mutation == "project":
         table(obj["python"])["wheel_stem"] = "wrong_project"
     elif mutation == "duplicate_image":
@@ -126,7 +158,7 @@ def test_strict_policy_rejects_invalid_inputs(tmp_path: Path, mutation: str) -> 
     encoded = json.dumps(obj)
     if mutation == "duplicate":
         encoded = encoded.replace(
-            '"schema_version": 1', '"schema_version": 1, "schema_version": 1'
+            '"schema_version": 2', '"schema_version": 2, "schema_version": 2'
         )
     path = tmp_path / "policy.json"
     path.write_text(encoded)

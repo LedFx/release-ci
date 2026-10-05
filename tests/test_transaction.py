@@ -6,19 +6,32 @@ import json
 import tarfile
 import zipfile
 from email.message import Message
+from functools import cache
 from pathlib import Path
 
 import pytest
 
-from release_ci.common import PublicationError
-from release_ci.policy import Policy, parse_version
+from release_ci.common import PublicationError, array, decode, string, table
+from release_ci.planner import plan
 from release_ci.publisher import Publisher
 
 POLICY = Path(__file__).resolve().parents[1] / "examples/ledfx-senders.json"
 
 
 def expected_names(version: str) -> set[str]:
-    return Policy.load(POLICY).distribution_names(parse_version("v" + version, "v"))
+    retained = table(
+        decode((POLICY.parents[1] / "tests/fixtures/ledfx-senders.json").read_bytes())
+    )
+    return {
+        string(name).replace(string(retained["version"]), version)
+        for name in array(retained["filenames"])
+    }
+
+
+@cache
+def native_plan() -> str:
+    _, expected = plan(POLICY.parents[1] / "tests/fixtures/planning/ledfx-senders", SHA)
+    return json.dumps(expected.value())
 
 
 SHA = "1" * 40
@@ -26,10 +39,17 @@ REPO = "LedFx/ledfx-senders"
 VERSION = "0.3.0"
 
 
-def distributions(directory: Path, version: str = VERSION) -> None:
+def distributions(
+    directory: Path, version: str = VERSION, *, pure: bool = False
+) -> None:
     directory.mkdir()
     metadata = f"Metadata-Version: 2.4\nName: ledfx-senders\nVersion: {version}\n"
-    for name in expected_names(version):
+    names = (
+        {f"ledfx_senders-{version}-py3-none-any.whl", f"ledfx_senders-{version}.tar.gz"}
+        if pure
+        else expected_names(version)
+    )
+    for name in names:
         path = directory / name
         if name.endswith(".whl"):
             tag = name.removesuffix(".whl").split("-", 2)[2]
@@ -126,10 +146,19 @@ class Remote:
         return json.dumps(self.release).encode()
 
 
-@pytest.fixture
-def transaction(tmp_path: Path) -> tuple[Publisher, Remote]:
+@pytest.fixture(params=["cibuildwheel", "pure"])
+def transaction(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> tuple[Publisher, Remote]:
     dist = tmp_path / "dist"
-    distributions(dist)
+    pure = request.param == "pure"
+    distributions(dist, pure=pure)
+    policy = POLICY
+    if pure:
+        value = table(decode(POLICY.read_bytes()))
+        table(value["python"])["wheel_targets"] = "pure"
+        policy = tmp_path / "pure-policy.json"
+        policy.write_text(json.dumps(value))
     remote = Remote()
     publisher = Publisher(
         dist,
@@ -137,7 +166,8 @@ def transaction(tmp_path: Path) -> tuple[Publisher, Remote]:
         REPO,
         "v" + VERSION,
         SHA,
-        policy=POLICY,
+        policy=policy,
+        wheel_plan=None if pure else native_plan(),
         command=remote,
         fetch=remote.fetch,
     )
@@ -157,14 +187,14 @@ def test_success_attests_then_uploads_and_publishes_existing_id_last(
     assert publisher.check_upload()["pypi_upload"] is True
     upload_pypi(publisher, remote)
     publisher.finalize()
-    assert len(remote.writes) == 37
+    assert len(remote.writes) == len(publisher.local_inputs()) + 1
     assert remote.writes[-1][remote.writes[-1].index("--method") + 1] == "PATCH"
     assert "make_latest=true" in remote.writes[-1]
     assert remote.release["body"] == "Reviewed release-please notes"
     attestations = [
         c for c in remote.commands if c[:3] == ["gh", "attestation", "verify"]
     ]
-    assert len(attestations) == 36
+    assert len(attestations) == len(publisher.local_inputs())
     assert remote.commands.index(attestations[-1]) < remote.commands.index(
         remote.writes[0]
     )
@@ -185,7 +215,7 @@ def test_partial_retry_skips_only_matching_remote_files(
     publisher.prepare()
     upload_pypi(publisher, remote)
     publisher.finalize()
-    assert len(remote.writes) == 36
+    assert len(remote.writes) == len(publisher.local_inputs())
     assert all(name not in c[2] for c in remote.writes[:-1])
 
 
@@ -197,7 +227,7 @@ def test_explicit_asset_distribution_collision_rejected_before_side_effects(
 
     original, remote = transaction
     name = next(iter(original.local_inputs()))
-    policy = table(decode(POLICY.read_bytes()))
+    policy = table(decode(original.policy_path.read_bytes()))
     policy["github_assets"] = {
         "distributions": include_distributions,
         "files": [name.replace(VERSION, "{version}")],
@@ -214,6 +244,9 @@ def test_explicit_asset_distribution_collision_rejected_before_side_effects(
         "v" + VERSION,
         SHA,
         policy=policy_path,
+        wheel_plan=native_plan()
+        if original.policy.wheel_targets == "cibuildwheel"
+        else None,
         assets=assets,
         command=remote,
         fetch=remote.fetch,
@@ -294,7 +327,17 @@ def test_conflicts_prevent_all_remote_writes(
 
 
 @pytest.mark.parametrize(
-    "change", ["tag", "release_id", "body", "prerelease", "local", "snapshot"]
+    "change",
+    [
+        "tag",
+        "release_id",
+        "body",
+        "prerelease",
+        "local",
+        "snapshot",
+        "plan",
+        "missing_plan",
+    ],
 )
 def test_frozen_identity_and_inputs_rechecked_before_writes(
     transaction: tuple[Publisher, Remote], change: str
@@ -310,6 +353,13 @@ def test_frozen_identity_and_inputs_rechecked_before_writes(
         ] = {"release_id": 99, "body": "changed", "prerelease": True}[change]
     elif change == "local":
         next(publisher.dist.glob("*.whl")).write_bytes(b"changed")
+    elif change in ("plan", "missing_plan"):
+        snapshot = table(decode(publisher.snapshot.read_bytes()))
+        if change == "missing_plan":
+            del snapshot["wheel_plan"]
+        else:
+            table(snapshot["wheel_plan"])["source_sha"] = "2" * 40
+        publisher.snapshot.write_text(json.dumps(snapshot))
     else:
         publisher.snapshot.write_text("{}")
     with pytest.raises(PublicationError):
@@ -350,7 +400,7 @@ def test_older_release_never_moves_latest_backwards(
 def test_complete_matrix_is_required(transaction: tuple[Publisher, Remote]) -> None:
     publisher, remote = transaction
     next(publisher.dist.glob("*.whl")).unlink()
-    with pytest.raises(PublicationError, match="file set"):
+    with pytest.raises(PublicationError, match="Missing wheel targets"):
         publisher.prepare()
     assert not remote.writes
 
@@ -401,7 +451,7 @@ def test_partial_upload_failure_can_resume_without_clobber(
 
     def command(args: list[str]) -> bytes:
         nonlocal failed
-        if "POST" in args and len(remote.assets) == 2 and not failed:
+        if "POST" in args and len(remote.assets) == 1 and not failed:
             failed = True
             raise PublicationError("temporary upload failure")
         return remote(args)
@@ -409,10 +459,10 @@ def test_partial_upload_failure_can_resume_without_clobber(
     publisher.command = command
     with pytest.raises(PublicationError, match="temporary"):
         publisher.finalize()
-    assert len(remote.assets) == 2 and remote.release["draft"] is True
+    assert len(remote.assets) == 1 and remote.release["draft"] is True
     publisher.finalize()
     posts = [c for c in remote.writes if "POST" in c]
-    assert len(posts) == len({c[2] for c in posts}) == 36
+    assert len(posts) == len({c[2] for c in posts}) == len(publisher.local_inputs())
 
 
 @pytest.mark.parametrize("kind", ["name", "version", "abi", "unexpected", "symlink"])
@@ -434,9 +484,11 @@ def test_distribution_metadata_and_regular_file_contract(
             k for k in items if k.endswith("WHEEL" if kind == "abi" else "METADATA")
         )
         items[key] = items[key].replace(
-            {"name": b"ledfx-senders", "version": VERSION.encode(), "abi": b"cp3"}[
-                kind
-            ],
+            {
+                "name": b"ledfx-senders",
+                "version": VERSION.encode(),
+                "abi": b"py3" if publisher.policy.wheel_targets == "pure" else b"cp3",
+            }[kind],
             b"wrong",
         )
         with zipfile.ZipFile(path, "w") as wheel:
@@ -461,6 +513,7 @@ def test_prerelease_does_not_become_latest(tmp_path: Path, tag: str) -> None:
         tag,
         SHA,
         policy=POLICY,
+        wheel_plan=native_plan(),
         command=remote,
         fetch=remote.fetch,
     )

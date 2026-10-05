@@ -4,6 +4,7 @@ import itertools
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from .common import PublicationError, array, decode, flag, string, table
 
@@ -81,12 +82,11 @@ class Policy:
     tag_prefix: str
     project: str
     wheel_stem: str
-    wheel_tags: tuple[str, ...]
+    wheel_targets: Literal["pure", "cibuildwheel"]
     sdist: str
     github_distributions: bool
     asset_templates: tuple[str, ...]
     oci: tuple[Image, ...]
-    planned_wheels: bool
 
     @classmethod
     def load(cls, path: Path) -> "Policy":
@@ -104,12 +104,10 @@ class Policy:
                 "oci",
             },
         )
-        if type(obj["schema_version"]) is not int or obj["schema_version"] not in (
-            1,
-            2,
-        ):
-            raise PublicationError("Unsupported policy schema")
-        planned = obj["schema_version"] == 2
+        if type(obj["schema_version"]) is not int or obj["schema_version"] != 2:
+            raise PublicationError(
+                "Unsupported policy schema: use schema_version 2 with python.wheel_targets"
+            )
         repository, workflow, prefix = (
             string(obj[k]) for k in ("repository", "workflow", "tag_prefix")
         )
@@ -125,7 +123,7 @@ class Policy:
                 "project",
                 "wheel_stem",
                 "sdist",
-                "wheel_targets" if planned else "wheel_tags",
+                "wheel_targets",
             },
         )
         project, stem, sdist = (
@@ -137,13 +135,14 @@ class Policy:
             or canonical(stem) != canonical(project)
         ):
             raise PublicationError("Invalid Python project/stem")
-        if planned and py["wheel_targets"] != "cibuildwheel":
-            raise PublicationError("Unsupported planned wheel mode")
-        tags = () if planned else strings(py["wheel_tags"])
-        if not planned and not tags:
-            raise PublicationError("At least one wheel is required")
-        for tag in tags:
-            expand_tag(tag)
+        mode = py["wheel_targets"]
+        if mode not in ("pure", "cibuildwheel"):
+            raise PublicationError(
+                "Unsupported wheel_targets: use pure or cibuildwheel"
+            )
+        wheel_targets: Literal["pure", "cibuildwheel"] = (
+            "pure" if mode == "pure" else "cibuildwheel"
+        )
         sample = parse_version("v1.2.3", "v")
         if "{version}" not in sdist or not render(sdist, sample).endswith(".tar.gz"):
             raise PublicationError("Versioned source archive required")
@@ -179,27 +178,12 @@ class Policy:
             prefix,
             project,
             stem,
-            tags,
+            wheel_targets,
             sdist,
             flag(gh["distributions"]),
             templates,
             tuple(images),
-            planned,
         )
-
-    def distribution_names(self, version: Version) -> set[str]:
-        if self.planned_wheels:
-            raise PublicationError(
-                "Planned wheels require target coverage, not an exact filename list"
-            )
-        names = {
-            f"{self.wheel_stem}-{version.package}-{tag}.whl" for tag in self.wheel_tags
-        } | {render(self.sdist, version)}
-        if names & self.asset_names(version):
-            raise PublicationError(
-                "Explicit GitHub assets overlap Python distributions"
-            )
-        return names
 
     def asset_names(self, version: Version) -> set[str]:
         names = {render(template, version) for template in self.asset_templates}

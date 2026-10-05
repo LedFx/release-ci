@@ -7,23 +7,43 @@ import pytest
 
 from release_ci.__main__ import main
 from release_ci.publisher import Publisher
-from tests.test_transaction import POLICY, REPO, SHA, VERSION, Remote, distributions
+from tests.test_transaction import (
+    POLICY,
+    REPO,
+    SHA,
+    VERSION,
+    Remote,
+    distributions,
+    native_plan,
+)
 
 
+@pytest.mark.parametrize("pure", [False, True])
 @pytest.mark.parametrize(
-    "invalid", [None, "workflow", "repository", "path", "snapshot"]
+    "invalid", [None, "workflow", "repository", "path", "snapshot", "plan", "legacy"]
 )
 def test_cli_preflight_identity_and_outputs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: str | None
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: str | None,
+    pure: bool,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     temporary = tmp_path / "temp"
     temporary.mkdir()
     dist = workspace / "dist"
-    distributions(dist)
+    distributions(dist, pure=pure)
     policy = workspace / "policy.json"
-    policy.write_bytes(POLICY.read_bytes())
+    from release_ci.common import decode, table
+
+    value = table(decode(POLICY.read_bytes()))
+    if pure:
+        table(value["python"])["wheel_targets"] = "pure"
+    if invalid == "legacy":
+        value["schema_version"] = 1
+    policy.write_text(json.dumps(value))
     snapshot = temporary / "snapshot.json"
     output = tmp_path / "outputs"
     for key, value in {
@@ -90,6 +110,11 @@ def test_cli_preflight_identity_and_outputs(
             str(dist),
             "--snapshot",
             str(snapshot),
+            *(
+                ["--wheel-plan", native_plan() if pure else "{}"]
+                if invalid == "plan"
+                else ([] if pure else ["--wheel-plan", native_plan()])
+            ),
         ],
     )
     assert main() == (0 if invalid is None else 1)
@@ -103,6 +128,10 @@ def test_cli_preflight_identity_and_outputs(
     else:
         assert not remote.commands
         assert not snapshot.exists()
+        if invalid in ("plan", "legacy"):
+            assert (
+                "wheel plan" if invalid == "plan" else "schema_version 2"
+            ) in capsys.readouterr().err
 
 
 def test_composite_preserves_caller_authority_and_quotes_inputs() -> None:

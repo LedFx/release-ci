@@ -70,13 +70,18 @@ class Publisher:
         ):
             raise PublicationError("Invalid canonical repository or source SHA")
         self.parsed = parse_version(tag, self.policy.tag_prefix)
-        if self.policy.planned_wheels != (wheel_plan is not None):
-            raise PublicationError(
-                "Wheel plan is required only for a planned wheel policy"
-            )
-        self.wheel_plan = (
-            WheelPlan.load(decode(wheel_plan), sha) if wheel_plan is not None else None
-        )
+        if self.policy.wheel_targets == "pure":
+            if wheel_plan is not None:
+                raise PublicationError(
+                    "Pure wheel policy does not accept a pre-build wheel plan"
+                )
+            self.wheel_plan = WheelPlan.pure(sha)
+        else:
+            if wheel_plan is None:
+                raise PublicationError(
+                    "Cibuildwheel policy requires a pre-build wheel plan"
+                )
+            self.wheel_plan = WheelPlan.load(decode(wheel_plan), sha)
         self.dist, self.snapshot, self.assets = dist, snapshot, assets
         self.repo, self.tag, self.sha = repository, tag, sha
         self.version = self.parsed.package
@@ -230,8 +235,7 @@ class Publisher:
             "workflow": self.policy.workflow,
             "oci_sources": self.oci.sources(),
         }
-        if self.wheel_plan is not None:
-            result["wheel_plan"] = self.wheel_plan.value()
+        result["wheel_plan"] = self.wheel_plan.value()
         return result
 
     def load_snapshot(self) -> tuple[dict[str, object], Hashes, dict[str, object]]:
@@ -269,10 +273,7 @@ class Publisher:
             or self.asset_inputs() != snapshot.get("assets")
             or digest(self.policy_path) != snapshot.get("policy_sha256")
             or self.oci.sources() != snapshot.get("oci_sources")
-            or (
-                self.wheel_plan is not None
-                and self.wheel_plan.value() != snapshot.get("wheel_plan")
-            )
+            or self.wheel_plan.value() != snapshot.get("wheel_plan")
         ):
             raise PublicationError("Publication snapshot changed before a write")
         return release

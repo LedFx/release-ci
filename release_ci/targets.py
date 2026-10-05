@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from .common import PublicationError, string
 from .policy import expand_tag, keys, strings
@@ -65,12 +66,35 @@ class Target:
 @dataclass(frozen=True)
 class WheelPlan:
     source_sha: str
-    cibuildwheel: str
+    wheel_targets: Literal["pure", "cibuildwheel"]
+    cibuildwheel: str | None
     targets: tuple[Target, ...]
 
     @classmethod
+    def pure(cls, source_sha: str) -> "WheelPlan":
+        if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+            raise PublicationError("Invalid pure wheel plan source SHA")
+        return cls(source_sha, "pure", None, ())
+
+    @classmethod
     def load(cls, value: object, source_sha: str) -> "WheelPlan":
-        obj = keys(value, {"schema_version", "source_sha", "cibuildwheel", "targets"})
+        try:
+            obj = keys(
+                value,
+                {
+                    "schema_version",
+                    "source_sha",
+                    "wheel_targets",
+                    "cibuildwheel",
+                    "targets",
+                },
+            )
+        except PublicationError:
+            raise PublicationError(
+                "Invalid wheel plan: expected schema_version, source_sha, wheel_targets, cibuildwheel and targets"
+            ) from None
+        if obj["wheel_targets"] != "cibuildwheel":
+            raise PublicationError("Pre-build wheel plan must use cibuildwheel targets")
         if type(obj["schema_version"]) is not int or obj["schema_version"] != 1:
             raise PublicationError("Unsupported wheel plan schema")
         sha, version = string(obj["source_sha"]), string(obj["cibuildwheel"])
@@ -81,17 +105,36 @@ class WheelPlan:
         targets = tuple(Target.parse(item) for item in strings(obj["targets"]))
         if not targets:
             raise PublicationError("Wheel plan has no targets")
-        return cls(sha, version, targets)
+        return cls(sha, "cibuildwheel", version, targets)
 
     def value(self) -> dict[str, object]:
+        if self.wheel_targets == "pure":
+            return {
+                "schema_version": 1,
+                "source_sha": self.source_sha,
+                "wheel_targets": "pure",
+                "targets": ["py3-none-any"],
+            }
         return {
             "schema_version": 1,
+            "wheel_targets": "cibuildwheel",
             "source_sha": self.source_sha,
             "cibuildwheel": self.cibuildwheel,
             "targets": [target.identifier for target in self.targets],
         }
 
     def coverage(self, wheel_tags: dict[str, str]) -> None:
+        if self.wheel_targets == "pure":
+            if not wheel_tags:
+                raise PublicationError("Missing wheel targets: py3-none-any")
+            if (
+                len(wheel_tags) != 1
+                or next(iter(wheel_tags.values())) != "py3-none-any"
+            ):
+                raise PublicationError(
+                    "Pure wheel target requires exactly one py3-none-any wheel"
+                )
+            return
         covered: dict[str, str] = {}
         for filename, tags in sorted(wheel_tags.items()):
             expanded = [tag.split("-") for tag in sorted(expand_tag(tags))]

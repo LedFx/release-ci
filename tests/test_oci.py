@@ -11,7 +11,15 @@ from release_ci.common import MissingArtifact, PublicationError, array, decode, 
 from release_ci.oci import OCI, Children
 from release_ci.policy import Image, parse_version
 from release_ci.publisher import Publisher
-from tests.test_transaction import POLICY, REPO, SHA, VERSION, Remote, distributions
+from tests.test_transaction import (
+    POLICY,
+    REPO,
+    SHA,
+    VERSION,
+    Remote,
+    distributions,
+    native_plan,
+)
 
 
 class Registry:
@@ -194,18 +202,21 @@ def test_receipt_contract_rejects_invalid_sources(
     assert not remote.writes
 
 
+@pytest.mark.parametrize("pure", [False, True])
 def test_full_package_assets_and_oci_transaction(
-    tmp_path: Path, registry: tuple[OCI, Registry, Children]
+    tmp_path: Path, registry: tuple[OCI, Registry, Children], pure: bool
 ) -> None:
     oci, registry_remote, _ = registry
     policy = table(decode(POLICY.read_bytes()))
     ledfx = table(decode((POLICY.parent / "ledfx.json").read_bytes()))
     policy["github_assets"] = ledfx["github_assets"]
     policy["oci"] = ledfx["oci"]
+    if pure:
+        table(policy["python"])["wheel_targets"] = "pure"
     path = tmp_path / "policy.json"
     path.write_text(json.dumps(policy))
     dist = tmp_path / "dist"
-    distributions(dist)
+    distributions(dist, pure=pure)
     assets = tmp_path / "assets"
     assets.mkdir()
     for name in array(table(policy["github_assets"])["files"]):
@@ -228,6 +239,7 @@ def test_full_package_assets_and_oci_transaction(
         "v" + VERSION,
         SHA,
         policy=path,
+        wheel_plan=None if pure else native_plan(),
         assets=assets,
         docker_digests=oci.directory,
         command=command,

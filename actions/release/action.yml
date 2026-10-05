@@ -5,7 +5,7 @@ inputs:
     description: prepare, check-upload, promote, or finalize
     required: true
   policy:
-    description: Caller workspace-relative JSON policy from the tested source commit
+    description: Caller workspace-relative schema 2 JSON policy from the tested source commit
     required: true
   dist:
     description: Caller workspace-relative tested Python distribution directory
@@ -22,7 +22,7 @@ inputs:
     required: false
     default: ''
   wheel-plan:
-    description: Pre-build planning job's JSON output; required only for schema 2
+    description: Pre-build JSON plan required for cibuildwheel targets; omit for pure targets
     required: false
     default: ''
 outputs:

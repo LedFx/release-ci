@@ -21,6 +21,7 @@ def selected(*identifiers: str) -> WheelPlan:
     return WheelPlan.load(
         {
             "schema_version": 1,
+            "wheel_targets": "cibuildwheel",
             "source_sha": SHA,
             "cibuildwheel": "4.2.1",
             "targets": list(identifiers),
@@ -167,7 +168,8 @@ def test_invalid_unexpected_and_overlapping_wheels(
 
 
 @pytest.mark.parametrize(
-    "change", ["empty", "duplicate", "source", "unknown", "malformed"]
+    "change",
+    ["empty", "duplicate", "source", "unknown", "malformed", "kind", "missing_kind"],
 )
 def test_invalid_plans_fail(change: str) -> None:
     value = selected("cp311-win_amd64").value()
@@ -180,6 +182,10 @@ def test_invalid_plans_fail(change: str) -> None:
         value["source_sha"] = "2" * 40
     elif change == "unknown":
         value["extra"] = True
+    elif change == "kind":
+        value["wheel_targets"] = "pure"
+    elif change == "missing_kind":
+        del value["wheel_targets"]
     else:
         value["targets"] = ["pp311-win_amd64"]
     with pytest.raises(PublicationError):
@@ -213,10 +219,6 @@ def planned_transaction(tmp_path: Path) -> tuple[Publisher, Remote, str, Path]:
     dist = tmp_path / "dist"
     distributions(dist)
     value = table(decode(POLICY.read_bytes()))
-    value["schema_version"] = 2
-    py = table(value["python"])
-    del py["wheel_tags"]
-    py["wheel_targets"] = "cibuildwheel"
     policy = tmp_path / "policy.json"
     policy.write_text(json.dumps(value))
     _, expected = plan(FIXTURES / "ledfx-senders", SHA)

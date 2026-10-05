@@ -83,33 +83,24 @@ def validate_archive(path: Path, policy: Policy, version: Version) -> None:
 
 
 def distributions(
-    directory: Path, policy: Policy, version: Version, plan: WheelPlan | None = None
+    directory: Path, policy: Policy, version: Version, plan: WheelPlan
 ) -> Hashes:
-    if policy.planned_wheels:
-        if plan is None:
-            raise PublicationError(
-                "Planned wheel policy requires a pre-build wheel plan"
-            )
-        if directory.is_symlink() or not directory.is_dir():
-            raise PublicationError("Artifact root must be a regular directory")
-        names = {path.name for path in directory.iterdir()}
-        prefix = f"{policy.wheel_stem}-{version.package}-"
-        sdist = render(policy.sdist, version)
-        wheel_tags: dict[str, str] = {}
-        for name in names - {sdist}:
-            if not name.startswith(prefix) or not name.endswith(".whl"):
-                raise PublicationError("Unexpected distribution filename")
-            wheel_tags[name] = name[len(prefix) : -4]
-        result = files(directory, set(wheel_tags) | {sdist})
-        plan.coverage(wheel_tags)
-        if names & policy.asset_names(version):
-            raise PublicationError(
-                "Explicit GitHub assets overlap Python distributions"
-            )
-    else:
-        if plan is not None:
-            raise PublicationError("Exact wheel policy does not accept a wheel plan")
-        result = files(directory, policy.distribution_names(version))
+    if plan.wheel_targets != policy.wheel_targets:
+        raise PublicationError("Wheel plan kind differs from policy wheel_targets")
+    if directory.is_symlink() or not directory.is_dir():
+        raise PublicationError("Artifact root must be a regular directory")
+    names = {path.name for path in directory.iterdir()}
+    prefix = f"{policy.wheel_stem}-{version.package}-"
+    sdist = render(policy.sdist, version)
+    wheel_tags: dict[str, str] = {}
+    for name in names - {sdist}:
+        if not name.startswith(prefix) or not name.endswith(".whl"):
+            raise PublicationError("Unexpected distribution filename")
+        wheel_tags[name] = name[len(prefix) : -4]
+    result = files(directory, set(wheel_tags) | {sdist})
+    plan.coverage(wheel_tags)
+    if names & policy.asset_names(version):
+        raise PublicationError("Explicit GitHub assets overlap Python distributions")
     for name in result:
         validate_archive(directory / name, policy, version)
     return result

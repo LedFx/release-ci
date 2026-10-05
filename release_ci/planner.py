@@ -108,6 +108,7 @@ def plan(project: Path, source_sha: str) -> tuple[dict[str, object], WheelPlan]:
     wheel_plan = WheelPlan.load(
         {
             "schema_version": 1,
+            "wheel_targets": "cibuildwheel",
             "source_sha": source_sha,
             "cibuildwheel": version("cibuildwheel"),
             "targets": identifiers,

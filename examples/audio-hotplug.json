@@ -1,15 +1,13 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "repository": "LedFx/audio-hotplug",
   "workflow": ".github/workflows/publish.yml",
   "tag_prefix": "v",
   "python": {
     "project": "audio-hotplug",
     "wheel_stem": "audio_hotplug",
-    "wheel_tags": [
-      "py3-none-any"
-    ],
-    "sdist": "audio_hotplug-{version}.tar.gz"
+    "sdist": "audio_hotplug-{version}.tar.gz",
+    "wheel_targets": "pure"
   },
   "github_assets": {
     "distributions": true,
