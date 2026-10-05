@@ -21,13 +21,13 @@ Keep your build/test gates, same-run artifact downloads, explicit canonical tag-
 
 Target rows select native coverage; tests validate coverage against real planner expectations or the constant pure target using retained public release filename/metadata fixtures. Confirm them against the actual source commit before migration. The audio-hotplug fixture is published 0.1.0: 0.2.0 was unavailable when checked, and its PyPI Trusted Publisher was not yet configured. Prepare its migration PR, but an administrator must register the existing `LedFx/audio-hotplug`, `publish.yml`, `pypi` identity before a real release can succeed.
 
-Aubio's manual TestPyPI job remains a separate unchanged caller lane. This production core accepts only canonical tag pushes and has no TestPyPI or arbitrary upload-URL setting. Preserve samplerate's `!cancelled()` plus explicit successful dependency checks: implicit `success()` can suppress a release when a transitive optional job was intentionally skipped. Keep each project's existing version cross-checks (Meson/vcpkg, SCM tags, CMake or package metadata) before builds.
+This production core accepts only canonical tag pushes and has no TestPyPI or arbitrary upload-URL setting. Preserve samplerate's `!cancelled()` plus explicit successful dependency checks: implicit `success()` can suppress a release when a transitive optional job was intentionally skipped. Keep each project's existing version cross-checks (Meson/vcpkg, SCM tags, CMake or package metadata) before builds.
 
 Download selectors also remain local: aubio needs both `wheels-*` and `cibw-sdist`; audio uses `python-package-distributions`; noise/samplerate use `cibw-*`; native uses `sender-dist`. Never download a different run's output or regenerate its binaries. Retain output provenance and configure upload paths so colliding filenames cannot overwrite one another unnoticed.
 
 ## Action interface
 
-Use `LedFx/release-ci/actions/release@<reviewed full 40-character commit SHA>`. Moving version tags are for humans, not consumer pins. Include its released `# vX.Y.Z` comment for Renovate tracking. Upgrade all six consumers to the 0.3 pyproject interface and reviewed released SHA/version together.
+Use `LedFx/release-ci/actions/release@<reviewed full 40-character commit SHA>`. Moving version tags are for humans, not consumer pins. Include its actual released `# vX.Y.Z` comment for Renovate tracking. A reviewed fix may be pinned before its release; use a descriptive comment instead of claiming a version that does not yet exist. Upgrade every shared plan/release pin within a consumer together.
 
 Required inputs: `phase`, `dist`, `snapshot`. Optional `project` defaults to `.` and points to the caller checkout containing the canonical `pyproject.toml`; use `project: release-tools` when source is checked out separately. Project/distribution/asset/OCI paths must stay inside the caller workspace; `snapshot` is an owned path under `runner.temp`. Native projects require the planning job's full `wheel-plan` JSON on every phase. Pure projects omit it. `GH_TOKEN` is supplied through the step environment. Publication runs on hosted Linux with Python 3.11+ and `gh`; Docker/buildx and registry logins are needed only for OCI. No publication runtime dependencies are installed.
 
@@ -71,9 +71,16 @@ Pure package sequence in the caller job (native callers additionally pass the sa
     project: release-tools
     dist: dist
     snapshot: ${{ runner.temp }}/release-snapshot.json
+- name: Stage verified distributions for PyPI
+  if: steps.upload.outputs.pypi_upload == 'true'
+  working-directory: ${{ github.workspace }}
+  run: |
+    mkdir pypi-dist
+    cp -- dist/* pypi-dist/
 - if: steps.upload.outputs.pypi_upload == 'true'
   uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
   with:
+    packages-dir: pypi-dist/
     skip-existing: true # Only after matching remote SHA-256 checks.
 - id: finalize
   uses: LedFx/release-ci/actions/release@<reviewed-full-SHA>
@@ -85,6 +92,14 @@ Pure package sequence in the caller job (native callers additionally pass the sa
     dist: dist
     snapshot: ${{ runner.temp }}/release-snapshot.json
 ```
+
+Keep the frozen `dist/` unchanged for every shared phase and GitHub attestation.
+The PyPA uploader generates `.publish.attestation` sidecars beside its packages.
+After a successful `check-upload`, create `pypi-dist/` only when upload is needed
+and give that copy to `packages-dir`. Plain `mkdir` refuses an existing staging
+directory; keep uploader sidecars there rather than deleting them or weakening
+exact filename validation. The relative workspace path is visible inside the
+uploader's container. Keep the existing remote hash guard before `skip-existing`.
 
 Always retain the snapshot and `${{ steps.provenance.outputs.bundle-path }}` with the pinned upload-artifact action, including failed finalization. The caller's official PyPI action also supplies PyPI's separate PEP 740 publishing attestation; that does not replace GitHub artifact/OCI provenance verification here.
 
