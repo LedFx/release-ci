@@ -4,9 +4,10 @@ inputs:
   phase:
     description: prepare, check-upload, promote, or finalize
     required: true
-  policy:
-    description: Caller workspace-relative JSON policy from the tested source commit
-    required: true
+  project:
+    description: Caller checkout directory containing the tested pyproject.toml
+    required: false
+    default: .
   dist:
     description: Caller workspace-relative tested Python distribution directory
     required: true
@@ -19,6 +20,10 @@ inputs:
     default: ''
   docker-digests:
     description: Caller workspace-relative tested OCI source receipt directory
+    required: false
+    default: ''
+  wheel-plan:
+    description: Pre-build JSON plan required for cibuildwheel targets; omit for pure targets
     required: false
     default: ''
 outputs:
@@ -42,13 +47,15 @@ runs:
       env:
         ACTION_ROOT: ${{ github.action_path }}/../..
         PHASE: ${{ inputs.phase }}
-        POLICY: ${{ inputs.policy }}
+        PROJECT: ${{ inputs.project }}
         DIST: ${{ inputs.dist }}
         SNAPSHOT: ${{ inputs.snapshot }}
         ASSETS: ${{ inputs.assets }}
         DOCKER_DIGESTS: ${{ inputs.docker-digests }}
+        WHEEL_PLAN: ${{ inputs.wheel-plan }}
       run: |
-        args=("$PHASE" --policy "$POLICY" --dist "$DIST" --snapshot "$SNAPSHOT")
+        args=("$PHASE" --project "$PROJECT" --dist "$DIST" --snapshot "$SNAPSHOT")
         if [[ -n "$ASSETS" ]]; then args+=(--assets "$ASSETS"); fi
         if [[ -n "$DOCKER_DIGESTS" ]]; then args+=(--docker-digests "$DOCKER_DIGESTS"); fi
+        if [[ -n "$WHEEL_PLAN" ]]; then args+=(--wheel-plan "$WHEEL_PLAN"); fi
         python3 "$ACTION_ROOT/entrypoint.py" "${args[@]}"

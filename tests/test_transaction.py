@@ -6,19 +6,29 @@ import json
 import tarfile
 import zipfile
 from email.message import Message
+from functools import cache
 from pathlib import Path
 
 import pytest
 
-from release_ci.common import PublicationError
-from release_ci.policy import Policy, parse_version
+from release_ci.common import PublicationError, array, decode, string, table
+from release_ci.planner import plan
 from release_ci.publisher import Publisher
-
-POLICY = Path(__file__).resolve().parents[1] / "examples/ledfx-senders.json"
+from tests.project import PROJECT, ROOT, write_project
 
 
 def expected_names(version: str) -> set[str]:
-    return Policy.load(POLICY).distribution_names(parse_version("v" + version, "v"))
+    retained = table(decode((ROOT / "tests/fixtures/ledfx-senders.json").read_bytes()))
+    return {
+        string(name).replace(string(retained["version"]), version)
+        for name in array(retained["filenames"])
+    }
+
+
+@cache
+def native_plan(project: Path = PROJECT) -> str:
+    _, expected = plan(project, SHA)
+    return json.dumps(expected.value())
 
 
 SHA = "1" * 40
@@ -26,10 +36,17 @@ REPO = "LedFx/ledfx-senders"
 VERSION = "0.3.0"
 
 
-def distributions(directory: Path, version: str = VERSION) -> None:
+def distributions(
+    directory: Path, version: str = VERSION, *, pure: bool = False
+) -> None:
     directory.mkdir()
     metadata = f"Metadata-Version: 2.4\nName: ledfx-senders\nVersion: {version}\n"
-    for name in expected_names(version):
+    names = (
+        {f"ledfx_senders-{version}-py3-none-any.whl", f"ledfx_senders-{version}.tar.gz"}
+        if pure
+        else expected_names(version)
+    )
+    for name in names:
         path = directory / name
         if name.endswith(".whl"):
             tag = name.removesuffix(".whl").split("-", 2)[2]
@@ -126,10 +143,14 @@ class Remote:
         return json.dumps(self.release).encode()
 
 
-@pytest.fixture
-def transaction(tmp_path: Path) -> tuple[Publisher, Remote]:
+@pytest.fixture(params=["cibuildwheel", "pure"])
+def transaction(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> tuple[Publisher, Remote]:
     dist = tmp_path / "dist"
-    distributions(dist)
+    pure = request.param == "pure"
+    distributions(dist, pure=pure)
+    config = write_project(tmp_path / "project", pure=pure)
     remote = Remote()
     publisher = Publisher(
         dist,
@@ -137,7 +158,9 @@ def transaction(tmp_path: Path) -> tuple[Publisher, Remote]:
         REPO,
         "v" + VERSION,
         SHA,
-        policy=POLICY,
+        project=config,
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + "v" + VERSION,
+        wheel_plan=None if pure else native_plan(config),
         command=remote,
         fetch=remote.fetch,
     )
@@ -157,14 +180,14 @@ def test_success_attests_then_uploads_and_publishes_existing_id_last(
     assert publisher.check_upload()["pypi_upload"] is True
     upload_pypi(publisher, remote)
     publisher.finalize()
-    assert len(remote.writes) == 37
+    assert len(remote.writes) == len(publisher.local_inputs()) + 1
     assert remote.writes[-1][remote.writes[-1].index("--method") + 1] == "PATCH"
     assert "make_latest=true" in remote.writes[-1]
     assert remote.release["body"] == "Reviewed release-please notes"
     attestations = [
         c for c in remote.commands if c[:3] == ["gh", "attestation", "verify"]
     ]
-    assert len(attestations) == 36
+    assert len(attestations) == len(publisher.local_inputs())
     assert remote.commands.index(attestations[-1]) < remote.commands.index(
         remote.writes[0]
     )
@@ -185,7 +208,7 @@ def test_partial_retry_skips_only_matching_remote_files(
     publisher.prepare()
     upload_pypi(publisher, remote)
     publisher.finalize()
-    assert len(remote.writes) == 36
+    assert len(remote.writes) == len(publisher.local_inputs())
     assert all(name not in c[2] for c in remote.writes[:-1])
 
 
@@ -193,17 +216,17 @@ def test_partial_retry_skips_only_matching_remote_files(
 def test_explicit_asset_distribution_collision_rejected_before_side_effects(
     transaction: tuple[Publisher, Remote], tmp_path: Path, include_distributions: bool
 ) -> None:
-    from release_ci.common import decode, table
 
     original, remote = transaction
     name = next(iter(original.local_inputs()))
-    policy = table(decode(POLICY.read_bytes()))
-    policy["github_assets"] = {
-        "distributions": include_distributions,
-        "files": [name.replace(VERSION, "{version}")],
-    }
-    policy_path = tmp_path / "colliding-policy.json"
-    policy_path.write_text(json.dumps(policy))
+    config_path = write_project(
+        tmp_path / "colliding",
+        pure=original.config.wheel_targets == "pure",
+        settings={
+            "github-distributions": include_distributions,
+            "assets": [name.replace(VERSION, "{version}")],
+        },
+    )
     assets = tmp_path / "assets"
     assets.mkdir()
     (assets / name).write_bytes(b"different explicit GitHub asset bytes")
@@ -213,7 +236,11 @@ def test_explicit_asset_distribution_collision_rejected_before_side_effects(
         REPO,
         "v" + VERSION,
         SHA,
-        policy=policy_path,
+        project=config_path,
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/v" + VERSION,
+        wheel_plan=native_plan(config_path)
+        if original.config.wheel_targets == "cibuildwheel"
+        else None,
         assets=assets,
         command=remote,
         fetch=remote.fetch,
@@ -294,7 +321,17 @@ def test_conflicts_prevent_all_remote_writes(
 
 
 @pytest.mark.parametrize(
-    "change", ["tag", "release_id", "body", "prerelease", "local", "snapshot"]
+    "change",
+    [
+        "tag",
+        "release_id",
+        "body",
+        "prerelease",
+        "local",
+        "snapshot",
+        "plan",
+        "missing_plan",
+    ],
 )
 def test_frozen_identity_and_inputs_rechecked_before_writes(
     transaction: tuple[Publisher, Remote], change: str
@@ -310,6 +347,13 @@ def test_frozen_identity_and_inputs_rechecked_before_writes(
         ] = {"release_id": 99, "body": "changed", "prerelease": True}[change]
     elif change == "local":
         next(publisher.dist.glob("*.whl")).write_bytes(b"changed")
+    elif change in ("plan", "missing_plan"):
+        snapshot = table(decode(publisher.snapshot.read_bytes()))
+        if change == "missing_plan":
+            del snapshot["wheel_plan"]
+        else:
+            table(snapshot["wheel_plan"])["source_sha"] = "2" * 40
+        publisher.snapshot.write_text(json.dumps(snapshot))
     else:
         publisher.snapshot.write_text("{}")
     with pytest.raises(PublicationError):
@@ -350,7 +394,7 @@ def test_older_release_never_moves_latest_backwards(
 def test_complete_matrix_is_required(transaction: tuple[Publisher, Remote]) -> None:
     publisher, remote = transaction
     next(publisher.dist.glob("*.whl")).unlink()
-    with pytest.raises(PublicationError, match="file set"):
+    with pytest.raises(PublicationError, match="Missing wheel targets"):
         publisher.prepare()
     assert not remote.writes
 
@@ -401,7 +445,7 @@ def test_partial_upload_failure_can_resume_without_clobber(
 
     def command(args: list[str]) -> bytes:
         nonlocal failed
-        if "POST" in args and len(remote.assets) == 2 and not failed:
+        if "POST" in args and len(remote.assets) == 1 and not failed:
             failed = True
             raise PublicationError("temporary upload failure")
         return remote(args)
@@ -409,10 +453,10 @@ def test_partial_upload_failure_can_resume_without_clobber(
     publisher.command = command
     with pytest.raises(PublicationError, match="temporary"):
         publisher.finalize()
-    assert len(remote.assets) == 2 and remote.release["draft"] is True
+    assert len(remote.assets) == 1 and remote.release["draft"] is True
     publisher.finalize()
     posts = [c for c in remote.writes if "POST" in c]
-    assert len(posts) == len({c[2] for c in posts}) == 36
+    assert len(posts) == len({c[2] for c in posts}) == len(publisher.local_inputs())
 
 
 @pytest.mark.parametrize("kind", ["name", "version", "abi", "unexpected", "symlink"])
@@ -434,9 +478,11 @@ def test_distribution_metadata_and_regular_file_contract(
             k for k in items if k.endswith("WHEEL" if kind == "abi" else "METADATA")
         )
         items[key] = items[key].replace(
-            {"name": b"ledfx-senders", "version": VERSION.encode(), "abi": b"cp3"}[
-                kind
-            ],
+            {
+                "name": b"ledfx-senders",
+                "version": VERSION.encode(),
+                "abi": b"py3" if publisher.config.wheel_targets == "pure" else b"cp3",
+            }[kind],
             b"wrong",
         )
         with zipfile.ZipFile(path, "w") as wheel:
@@ -460,7 +506,9 @@ def test_prerelease_does_not_become_latest(tmp_path: Path, tag: str) -> None:
         REPO,
         tag,
         SHA,
-        policy=POLICY,
+        project=write_project(tmp_path / "project", version=version),
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + tag,
+        wheel_plan=native_plan(tmp_path / "project"),
         command=remote,
         fetch=remote.fetch,
     )
@@ -501,8 +549,8 @@ def test_cli_cannot_publish_from_manual_fork_or_branch(
         [
             "publish_release.py",
             "prepare",
-            "--policy",
-            str(POLICY),
+            "--project",
+            str(PROJECT),
             "--dist",
             str(tmp_path / "absent"),
             "--snapshot",
@@ -591,3 +639,104 @@ def test_higher_stable_draft_vetoes_latest(
 
     publisher.command = command
     assert publisher.latest(remote.release) is False
+
+
+@pytest.mark.parametrize(
+    "change", ["metadata", "settings", "symlink", "workflow", "old_snapshot"]
+)
+@pytest.mark.parametrize("phase", ["check_upload", "promote", "finalize"])
+def test_configuration_and_source_context_frozen_for_every_phase(
+    transaction: tuple[Publisher, Remote], tmp_path: Path, change: str, phase: str
+) -> None:
+    publisher, remote = transaction
+    publisher.prepare()
+    upload_pypi(publisher, remote)
+    if change in ("metadata", "settings"):
+        publisher.config_path.write_text(
+            publisher.config_path.read_text()
+            + (
+                "\n[project.scripts]\nexample='example:main'\n"
+                if change == "metadata"
+                else "\n[tool.release-ci]\ngithub-distributions=false\n"
+            )
+        )
+    elif change == "symlink":
+        saved = tmp_path / "saved.toml"
+        publisher.config_path.rename(saved)
+        publisher.config_path.symlink_to(saved)
+    elif change == "workflow":
+        publisher = Publisher(
+            publisher.dist,
+            publisher.snapshot,
+            REPO,
+            "v" + VERSION,
+            SHA,
+            project=publisher.config_path.parent,
+            workflow_ref=REPO + "/.github/workflows/other.yml@refs/tags/v" + VERSION,
+            wheel_plan=native_plan(publisher.config_path.parent)
+            if publisher.config.wheel_targets == "cibuildwheel"
+            else None,
+            command=remote,
+            fetch=remote.fetch,
+        )
+    else:
+        snapshot = table(decode(publisher.snapshot.read_bytes()))
+        snapshot["policy_sha256"] = snapshot.pop("pyproject_sha256")
+        publisher.snapshot.write_text(json.dumps(snapshot))
+    with pytest.raises(PublicationError):
+        {
+            "check_upload": publisher.check_upload,
+            "promote": publisher.promote,
+            "finalize": publisher.finalize,
+        }[phase]()
+    assert not remote.writes
+
+
+@pytest.mark.parametrize("kind", ["static", "dynamic", "mismatch"])
+@pytest.mark.parametrize("tag", ["0.3.0", "v0.3.0"])
+def test_metadata_version_and_tag_prefix_derive_without_config_switches(
+    tmp_path: Path, kind: str, tag: str
+) -> None:
+    dist = tmp_path / "dist"
+    distributions(dist, pure=True)
+    project = write_project(
+        tmp_path / "project",
+        pure=True,
+        version="0.4.0" if kind == "mismatch" else VERSION,
+    )
+    if kind == "dynamic":
+        path = project / "pyproject.toml"
+        path.write_text(
+            path.read_text().replace('version = "0.3.0"', 'dynamic = ["version"]')
+        )
+    remote = Remote()
+    remote.release["tag_name"] = tag
+    if kind == "mismatch":
+        with pytest.raises(PublicationError, match="Static project version"):
+            Publisher(
+                dist,
+                tmp_path / "snapshot",
+                REPO,
+                tag,
+                SHA,
+                project=project,
+                workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + tag,
+                command=remote,
+                fetch=remote.fetch,
+            )
+        assert not remote.commands
+    else:
+        publisher = Publisher(
+            dist,
+            tmp_path / "snapshot",
+            REPO,
+            tag,
+            SHA,
+            project=project,
+            workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/" + tag,
+            command=remote,
+            fetch=remote.fetch,
+        )
+        publisher.prepare()
+        upload_pypi(publisher, remote)
+        publisher.finalize()

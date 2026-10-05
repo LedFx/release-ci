@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm>=8", "cython>=3.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyfastnoiselite-ledfx"
+dynamic = ["version"]
+description = "Cython wrapper for Auburn's FastNoise Lite noise library, with stable-ABI wheels (LedFx fork of pyfastnoiselite)"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "ext/FastNoise/LICENSE"]
+authors = [
+    { name = "LedFx" },
+    { name = "Tiziano Bettio", email = "tc@tizilogic.com" },
+]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Cython",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+]
+keywords = ["noise", "simplex", "perlin", "procedural", "fastnoise"]
+dependencies = [
+    "numpy>=1.23.2", # first release with CPython 3.11 wheels; tested in CI
+]
+
+[project.urls]
+Homepage = "https://github.com/LedFx/pyfastnoiselite-ledfx"
+Source = "https://github.com/LedFx/pyfastnoiselite-ledfx"
+Issues = "https://github.com/LedFx/pyfastnoiselite-ledfx/issues"
+Upstream = "https://github.com/tizilogic/PyFastNoiseLite"
+
+[dependency-groups]
+wheel-build = ["cibuildwheel[uv]==4.2.1"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+
+[tool.cibuildwheel]
+build-frontend = "build[uv]"
+# One cp311-abi3 wheel per platform; cibuildwheel reuses it for the later
+# versions and only runs the tests there.
+build = ["cp311-*", "cp312-*", "cp313-*", "cp314-*", "cp315-*"]
+skip = ["*-win32", "*-manylinux_i686", "*-musllinux_i686"]
+test-groups = ["test"]
+test-command = "pytest {project}/tests"
+# No numpy wheels for armv7l, so installing it under QEMU would take hours
+test-skip = "*armv7l*"
+
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "setup.py" },
+    { dir = "src" },
+    { dir = "ext" },
+]
+
+[tool.ruff.lint]
+# Catch Python errors without reformatting inherited upstream code.
+select = ["F"]
+
+# Source rows replace the workflow wheel matrix.
+
+[[tool.release-ci.targets]]
+platform = "linux"
+arch = "x86_64"
+runner = "ubuntu-latest"
+
+[[tool.release-ci.targets]]
+platform = "linux"
+arch = "aarch64"
+runner = "ubuntu-24.04-arm"
+
+[[tool.release-ci.targets]]
+platform = "linux"
+arch = "armv7l"
+runner = "ubuntu-latest"
+
+[[tool.release-ci.targets]]
+platform = "windows"
+arch = "AMD64"
+runner = "windows-latest"
+
+[[tool.release-ci.targets]]
+platform = "macos"
+arch = "x86_64"
+runner = "macos-15-intel"
+
+[[tool.release-ci.targets]]
+platform = "macos"
+arch = "arm64"
+runner = "macos-latest"

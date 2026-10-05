@@ -2,8 +2,8 @@
 
 The compact `*.json` inventories retain exact filenames, version, source PyPI
 JSON URL and its SHA-256 from a read-only public release survey. They are
-independent inputs to the example-policy comparisons, never generated from
-policy expectations during a test or a publication run.
+independent inputs to the project configuration comparisons, never generated from
+configuration expectations during a test or a publication run.
 
 Representative METADATA, WHEEL and PKG-INFO files retain public archive header
 facts (long descriptions omitted). The matching summary records the exact

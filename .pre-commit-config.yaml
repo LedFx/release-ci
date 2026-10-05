@@ -20,7 +20,7 @@ repos:
         name: actionlint and shellcheck
         entry: uv run --frozen --only-group dev actionlint
         language: system
-        files: ^.github/workflows/
+        files: ^(.github/workflows/|examples/planned-wheels/ci\.yml$)
         require_serial: true
       - id: zizmor
         name: zizmor

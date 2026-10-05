@@ -7,11 +7,19 @@ from pathlib import Path
 
 import pytest
 
-from release_ci.common import MissingArtifact, PublicationError, array, decode, table
+from release_ci.common import MissingArtifact, PublicationError
+from release_ci.config import Config, Image, parse_version
 from release_ci.oci import OCI, Children
-from release_ci.policy import Image, parse_version
 from release_ci.publisher import Publisher
-from tests.test_transaction import POLICY, REPO, SHA, VERSION, Remote, distributions
+from tests.project import ROOT, write_project
+from tests.test_transaction import (
+    REPO,
+    SHA,
+    VERSION,
+    Remote,
+    distributions,
+    native_plan,
+)
 
 
 class Registry:
@@ -90,7 +98,7 @@ def registry(tmp_path: Path) -> tuple[OCI, Registry, Children]:
             children.setdefault(image.image, {})[arch] = digest
         (directory / f"docker-{arch}.txt").write_text("\n".join(refs))
     return (
-        OCI(images, directory, parse_version("v" + VERSION, "v"), SHA, remote),
+        OCI(images, directory, parse_version("v" + VERSION), SHA, remote),
         remote,
         children,
     )
@@ -194,21 +202,33 @@ def test_receipt_contract_rejects_invalid_sources(
     assert not remote.writes
 
 
+@pytest.mark.parametrize("pure", [False, True])
 def test_full_package_assets_and_oci_transaction(
-    tmp_path: Path, registry: tuple[OCI, Registry, Children]
+    tmp_path: Path, registry: tuple[OCI, Registry, Children], pure: bool
 ) -> None:
     oci, registry_remote, _ = registry
-    policy = table(decode(POLICY.read_bytes()))
-    ledfx = table(decode((POLICY.parent / "ledfx.json").read_bytes()))
-    policy["github_assets"] = ledfx["github_assets"]
-    policy["oci"] = ledfx["oci"]
-    path = tmp_path / "policy.json"
-    path.write_text(json.dumps(policy))
+    ledfx = Config.load(ROOT / "examples/ledfx")
+    path = write_project(
+        tmp_path / "project",
+        pure=pure,
+        settings={
+            "github-distributions": False,
+            "assets": list(ledfx.asset_templates),
+            "oci": [
+                {
+                    "image": image.image,
+                    "platforms": list(image.platforms),
+                    "promote-latest": image.promote_latest,
+                }
+                for image in ledfx.oci
+            ],
+        },
+    )
     dist = tmp_path / "dist"
-    distributions(dist)
+    distributions(dist, pure=pure)
     assets = tmp_path / "assets"
     assets.mkdir()
-    for name in array(table(policy["github_assets"])["files"]):
+    for name in ledfx.asset_templates:
         assert isinstance(name, str)
         (assets / name.replace("{tag_version}", VERSION)).write_bytes(b"frozen fixture")
     github = Remote()
@@ -227,7 +247,9 @@ def test_full_package_assets_and_oci_transaction(
         REPO,
         "v" + VERSION,
         SHA,
-        policy=path,
+        project=path,
+        workflow_ref=REPO + "/.github/workflows/ci.yml@refs/tags/v" + VERSION,
+        wheel_plan=None if pure else native_plan(path),
         assets=assets,
         docker_digests=oci.directory,
         command=command,

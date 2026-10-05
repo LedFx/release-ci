@@ -1,0 +1,23 @@
+name: Plan native wheels
+description: Enumerate the consumer's locked cibuildwheel configuration before builds
+inputs:
+  source-sha:
+    description: Full tested consumer source commit SHA
+    required: false
+    default: ${{ github.sha }}
+outputs:
+  matrix:
+    description: Actions include matrix from tool.release-ci.targets
+    value: ${{ steps.plan.outputs.matrix }}
+  wheel-plan:
+    description: Source-bound pre-build target plan for every publication phase
+    value: ${{ steps.plan.outputs.wheel-plan }}
+runs:
+  using: composite
+  steps:
+    - id: plan
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/../..
+        SOURCE_SHA: ${{ inputs.source-sha }}
+      run: uv run --frozen --only-group wheel-build python "$ACTION_ROOT/plan_entrypoint.py" --source-sha "$SOURCE_SHA"

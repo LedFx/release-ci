@@ -19,5 +19,6 @@
         }
       ]
     }
-  }
+  },
+  "bump-minor-pre-major": true
 }

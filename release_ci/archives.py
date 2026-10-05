@@ -6,7 +6,8 @@ from email.parser import Parser
 from pathlib import Path
 
 from .common import Hashes, PublicationError, digest
-from .policy import Policy, Version, canonical, expand_tag
+from .config import Config, Version, canonical, expand_tag, render
+from .targets import WheelPlan
 
 
 def files(directory: Path | None, expected: set[str]) -> Hashes:
@@ -20,11 +21,11 @@ def files(directory: Path | None, expected: set[str]) -> Hashes:
     if {p.name for p in paths} != expected or any(
         p.is_symlink() or not p.is_file() for p in paths
     ):
-        raise PublicationError("Artifact file set differs from policy")
+        raise PublicationError("Artifact file set differs from config")
     return {p.name: digest(p) for p in paths}
 
 
-def validate_archive(path: Path, policy: Policy, version: Version) -> None:
+def validate_archive(path: Path, config: Config, version: Version) -> None:
     try:
         if path.suffix == ".whl":
             with zipfile.ZipFile(path) as wheel:
@@ -66,7 +67,7 @@ def validate_archive(path: Path, policy: Policy, version: Version) -> None:
         project_names: list[str] = parsed.get_all("Name") or []
         if (
             len(project_names) != 1
-            or canonical(project_names[0]) != canonical(policy.project)
+            or canonical(project_names[0]) != canonical(config.project)
             or parsed.get_all("Version") != [version.package]
         ):
             raise PublicationError("Distribution name/version differs from tag")
@@ -81,8 +82,25 @@ def validate_archive(path: Path, policy: Policy, version: Version) -> None:
         raise PublicationError("Invalid distribution archive") from None
 
 
-def distributions(directory: Path, policy: Policy, version: Version) -> Hashes:
-    result = files(directory, policy.distribution_names(version))
+def distributions(
+    directory: Path, config: Config, version: Version, plan: WheelPlan
+) -> Hashes:
+    if plan.wheel_targets != config.wheel_targets:
+        raise PublicationError("Wheel plan kind differs from config wheel_targets")
+    if directory.is_symlink() or not directory.is_dir():
+        raise PublicationError("Artifact root must be a regular directory")
+    names = {path.name for path in directory.iterdir()}
+    prefix = f"{config.wheel_stem}-{version.package}-"
+    sdist = render(config.sdist, version)
+    wheel_tags: dict[str, str] = {}
+    for name in names - {sdist}:
+        if not name.startswith(prefix) or not name.endswith(".whl"):
+            raise PublicationError("Unexpected distribution filename")
+        wheel_tags[name] = name[len(prefix) : -4]
+    result = files(directory, set(wheel_tags) | {sdist})
+    plan.coverage(wheel_tags)
+    if names & config.asset_names(version):
+        raise PublicationError("Explicit GitHub assets overlap Python distributions")
     for name in result:
-        validate_archive(directory / name, policy, version)
+        validate_archive(directory / name, config, version)
     return result
