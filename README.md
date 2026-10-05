@@ -4,6 +4,8 @@ A SHA-pinned composite action and typed Python core for publishing tested Python
 
 Production publication stays in each consumer's existing workflow and environment. The shared action is a step in that job; it is not a reusable workflow. [PyPI does not currently support reusable workflows as Trusted Publishers](https://docs.pypi.org/trusted-publishers/troubleshooting/#reusable-workflows-on-github).
 
+**Start here for native packages:** [maintaining wheel support](docs/native-wheels.md). The opt-in planner derives both the build matrix and required targets before builds from your existing `pyproject.toml`. Python or platform changes then need no second exact wheel-tag matrix. LedFx and audio-hotplug keep schema 1's single `py3-none-any` wheel; their application/test matrices do not describe wheel outputs.
+
 ## Caller contract
 
 Keep your build/test gates, same-run artifact downloads, explicit canonical tag-push condition, production environment, narrowly scoped App token, official PyPI and attestation actions, and evidence retention in the caller. Publication jobs must be serialized without cancellation. Use the App token for GitHub finalization so existing `release: published` consumers still receive the event. Grant `id-token: write` only to the caller publication job. Do not pass a PyPI password/token.
@@ -25,9 +27,9 @@ Download selectors also remain local: aubio needs both `wheels-*` and `cibw-sdis
 
 ## Action interface
 
-Use `LedFx/release-ci/actions/release@<reviewed full 40-character commit SHA>`. Moving version tags are for humans, not consumer pins. A reviewed commit can be referenced before an action version is released.
+Use `LedFx/release-ci/actions/release@<reviewed full 40-character commit SHA>`. Moving version tags are for humans, not consumer pins. Include its released `# vX.Y.Z` comment for Renovate tracking. Adopt planned mode with a reviewed feature release and its SHA/version together.
 
-Required inputs: `phase`, `policy`, `dist`, `snapshot`. `policy` and `dist` are paths in the caller workspace; `snapshot` is an owned path under `runner.temp`. Optional `assets` and `docker-digests` are caller workspace paths and must match the policy. `GH_TOKEN` is supplied explicitly through the step environment. Runtime: hosted Linux, Python 3.11+, `gh`; Docker/buildx and registry logins only for OCI policies. No runtime dependency installation occurs.
+Required inputs: `phase`, `policy`, `dist`, `snapshot`. `policy` and `dist` are paths in the caller workspace; `snapshot` is an owned path under `runner.temp`. Optional `assets` and `docker-digests` are caller workspace paths and must match the policy. Schema 2 additionally requires the planning job's `wheel-plan` JSON output on every phase. `GH_TOKEN` is supplied explicitly through the step environment. Publication runtime: hosted Linux, Python 3.11+, `gh`; Docker/buildx and registry logins only for OCI policies. No publication runtime dependency installation occurs.
 
 | Phase | Effect | Outputs |
 | --- | --- | --- |
@@ -94,6 +96,8 @@ All fields are required, including empty `oci`/asset lists; unknown or duplicate
 
 `python.project` is compared using standard normalized project spelling. `wheel_stem` preserves exact filenames; `wheel_tags` is an explicit list, including compressed platform tags. The expanded WHEEL metadata tag set must match the filename. `sdist` is an exact name template. Every expected wheel and the sdist is required; no extra files or symlinks. Archive metadata must match project and version. Package licenses are not rewritten.
 
+Schema 2 replaces only `python.wheel_tags` with `"wheel_targets": "cibuildwheel"`. All other fields retain schema 1's contract; mixing modes fails. The pre-build plan must match the tested source SHA. [Target coverage rules and a complete workflow example](docs/native-wheels.md) explain ordinary/free-threaded CPython, ABI3 reuse, and repaired platform tags. Publication freezes the exact resulting filenames, hashes, and plan in the existing snapshot.
+
 `github_assets.distributions` selects whether distribution files are attached to GitHub; `files` lists other exact versioned filenames. Explicit asset names must never overlap distribution names, even when distribution attachment is disabled; this prevents ambiguity between bytes in the two directories. Only `{version}` (normalized Python version) and `{tag_version}` (prefix removed) placeholders are accepted. Frozen assets are hashed and attested; the core does not unpack or rebuild applications.
 
 Each optional `oci` entry has an explicit `ghcr.io/owner/image` or `docker.io/owner/image`, `platforms` (`linux/amd64`, `linux/arm64`), `version_tag: "{tag_version}"`, and `promote_latest`. Receipts retain existing `docker-amd64.txt`/`docker-arm64.txt` format: one configured immutable `image@sha256:...` source per platform/registry. Docker Hub's short `owner/image` receipt spelling is normalized. Version and source-SHA indexes must contain exactly the inspected tested children. The core never rebuilds layers.
@@ -110,7 +114,7 @@ Inspect the failed job and retained snapshot/bundles. Fix a configuration prereq
 
 ## Development
 
-Runtime is standard-library Python; uv manages only development tools. `uv sync --frozen --only-group dev --python 3.12`, `uv run --frozen --only-group dev python -m pytest -q`, and `uv run --frozen --only-group dev prek run --all-files` run the required checks. All maintained Python and stubs are included in strict Pyrefly with explicit Any rejected, plus Ruff annotation rules. Regression sentinels ensure future files cannot escape these gates. CI tests Python 3.11–3.15 with fake network/registry transports and checks the actual composite's unauthorized-call rejection. Tests never publish a release.
+Publication runtime is standard-library Python; uv manages development tools and the consumer's unprivileged planner/build group. `uv sync --frozen --only-group dev --python 3.12`, `uv run --frozen --only-group dev python -m pytest -q`, and `uv run --frozen --only-group dev prek run --all-files` run the required checks. All maintained Python and stubs are included in strict Pyrefly with explicit Any rejected, plus Ruff annotation rules. Regression sentinels ensure future files cannot escape these gates. CI tests Python 3.11–3.15 with fake network/registry transports and checks the actual composite's unauthorized-call rejection. Tests never publish a release.
 
 The repository's own release-please manages `version.txt`, package metadata/lock and changelog; it does not publish a PyPI package. Release automation uses the existing scoped LedFx App. Consumer build systems, matrices, runtime dependencies and notification jobs remain outside this repository.
 

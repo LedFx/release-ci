@@ -21,6 +21,10 @@ inputs:
     description: Caller workspace-relative tested OCI source receipt directory
     required: false
     default: ''
+  wheel-plan:
+    description: Pre-build planning job's JSON output; required only for schema 2
+    required: false
+    default: ''
 outputs:
   already_published:
     description: True when the existing public release is complete and verified
@@ -47,8 +51,10 @@ runs:
         SNAPSHOT: ${{ inputs.snapshot }}
         ASSETS: ${{ inputs.assets }}
         DOCKER_DIGESTS: ${{ inputs.docker-digests }}
+        WHEEL_PLAN: ${{ inputs.wheel-plan }}
       run: |
         args=("$PHASE" --policy "$POLICY" --dist "$DIST" --snapshot "$SNAPSHOT")
         if [[ -n "$ASSETS" ]]; then args+=(--assets "$ASSETS"); fi
         if [[ -n "$DOCKER_DIGESTS" ]]; then args+=(--docker-digests "$DOCKER_DIGESTS"); fi
+        if [[ -n "$WHEEL_PLAN" ]]; then args+=(--wheel-plan "$WHEEL_PLAN"); fi
         python3 "$ACTION_ROOT/entrypoint.py" "${args[@]}"

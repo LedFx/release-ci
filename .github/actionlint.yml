@@ -1,0 +1,7 @@
+# The example preserves the caller's supported GitHub queue: max setting.
+# actionlint 1.7.12 predates that key (upstream issue #687). Keep the
+# compatibility exception restricted to this example and this exact message.
+paths:
+  examples/planned-wheels/ci.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'

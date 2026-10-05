@@ -62,6 +62,7 @@ def test_cli_preflight_identity_and_outputs(
         policy: Path,
         assets: Path | None,
         docker_digests: Path | None,
+        wheel_plan: str | None,
     ) -> Publisher:
         return Publisher(
             dist,
@@ -72,6 +73,7 @@ def test_cli_preflight_identity_and_outputs(
             policy=policy,
             assets=assets,
             docker_digests=docker_digests,
+            wheel_plan=wheel_plan,
             command=remote,
             fetch=remote.fetch,
         )

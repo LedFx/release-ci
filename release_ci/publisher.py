@@ -27,6 +27,7 @@ from .common import (
 )
 from .oci import OCI
 from .policy import Policy, parse_version
+from .targets import WheelPlan
 
 
 def fetch_pypi(project: str, version: str) -> object:
@@ -57,6 +58,7 @@ class Publisher:
         policy: Path,
         assets: Path | None = None,
         docker_digests: Path | None = None,
+        wheel_plan: str | None = None,
         command: Command = run_command,
         fetch: Fetch | None = None,
     ) -> None:
@@ -68,6 +70,13 @@ class Publisher:
         ):
             raise PublicationError("Invalid canonical repository or source SHA")
         self.parsed = parse_version(tag, self.policy.tag_prefix)
+        if self.policy.planned_wheels != (wheel_plan is not None):
+            raise PublicationError(
+                "Wheel plan is required only for a planned wheel policy"
+            )
+        self.wheel_plan = (
+            WheelPlan.load(decode(wheel_plan), sha) if wheel_plan is not None else None
+        )
         self.dist, self.snapshot, self.assets = dist, snapshot, assets
         self.repo, self.tag, self.sha = repository, tag, sha
         self.version = self.parsed.package
@@ -113,7 +122,7 @@ class Publisher:
     def local_inputs(self) -> Hashes:
         if digest(self.policy_path) != self.policy_digest:
             raise PublicationError("Policy changed during transaction")
-        return distributions(self.dist, self.policy, self.parsed)
+        return distributions(self.dist, self.policy, self.parsed, self.wheel_plan)
 
     def asset_inputs(self) -> Hashes:
         result = self.local_inputs() if self.policy.github_distributions else {}
@@ -208,7 +217,7 @@ class Publisher:
     def identity(
         self, release: Mapping[str, object], hashes: Hashes
     ) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "repository": self.repo,
             "tag": self.tag,
             "sha": self.sha,
@@ -221,6 +230,9 @@ class Publisher:
             "workflow": self.policy.workflow,
             "oci_sources": self.oci.sources(),
         }
+        if self.wheel_plan is not None:
+            result["wheel_plan"] = self.wheel_plan.value()
+        return result
 
     def load_snapshot(self) -> tuple[dict[str, object], Hashes, dict[str, object]]:
         snapshot = table(decode(self.snapshot.read_text()))
@@ -257,6 +269,10 @@ class Publisher:
             or self.asset_inputs() != snapshot.get("assets")
             or digest(self.policy_path) != snapshot.get("policy_sha256")
             or self.oci.sources() != snapshot.get("oci_sources")
+            or (
+                self.wheel_plan is not None
+                and self.wheel_plan.value() != snapshot.get("wheel_plan")
+            )
         ):
             raise PublicationError("Publication snapshot changed before a write")
         return release

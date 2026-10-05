@@ -86,6 +86,7 @@ class Policy:
     github_distributions: bool
     asset_templates: tuple[str, ...]
     oci: tuple[Image, ...]
+    planned_wheels: bool
 
     @classmethod
     def load(cls, path: Path) -> "Policy":
@@ -103,8 +104,12 @@ class Policy:
                 "oci",
             },
         )
-        if type(obj["schema_version"]) is not int or obj["schema_version"] != 1:
+        if type(obj["schema_version"]) is not int or obj["schema_version"] not in (
+            1,
+            2,
+        ):
             raise PublicationError("Unsupported policy schema")
+        planned = obj["schema_version"] == 2
         repository, workflow, prefix = (
             string(obj[k]) for k in ("repository", "workflow", "tag_prefix")
         )
@@ -114,7 +119,15 @@ class Policy:
             or prefix not in ("", "v")
         ):
             raise PublicationError("Invalid repository/workflow/tag prefix")
-        py = keys(obj["python"], {"project", "wheel_stem", "wheel_tags", "sdist"})
+        py = keys(
+            obj["python"],
+            {
+                "project",
+                "wheel_stem",
+                "sdist",
+                "wheel_targets" if planned else "wheel_tags",
+            },
+        )
         project, stem, sdist = (
             string(py[k]) for k in ("project", "wheel_stem", "sdist")
         )
@@ -124,8 +137,10 @@ class Policy:
             or canonical(stem) != canonical(project)
         ):
             raise PublicationError("Invalid Python project/stem")
-        tags = strings(py["wheel_tags"])
-        if not tags:
+        if planned and py["wheel_targets"] != "cibuildwheel":
+            raise PublicationError("Unsupported planned wheel mode")
+        tags = () if planned else strings(py["wheel_tags"])
+        if not planned and not tags:
             raise PublicationError("At least one wheel is required")
         for tag in tags:
             expand_tag(tag)
@@ -169,9 +184,14 @@ class Policy:
             flag(gh["distributions"]),
             templates,
             tuple(images),
+            planned,
         )
 
     def distribution_names(self, version: Version) -> set[str]:
+        if self.planned_wheels:
+            raise PublicationError(
+                "Planned wheels require target coverage, not an exact filename list"
+            )
         names = {
             f"{self.wheel_stem}-{version.package}-{tag}.whl" for tag in self.wheel_tags
         } | {render(self.sdist, version)}

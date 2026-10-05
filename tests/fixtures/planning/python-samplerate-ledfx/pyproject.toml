@@ -1,0 +1,117 @@
+[build-system]
+requires = ["setuptools>=80", "cmake"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="samplerate-ledfx"
+# Bumped by release-please (release-please-config.json); do not edit by hand.
+version = "0.4.0"
+dynamic = ["readme"]
+description="Monolithic python wrapper for libsamplerate based on pybind11 and NumPy"
+authors=[
+{"name" = "LedFx"},
+{"name" = "Robin Scheibler", "email" ="fakufaku@gmail.com"},
+{"name" = "Tino Wagner", "email" ="ich@tinowagner.com"}
+]
+requires-python = ">=3.11"
+classifiers=[
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Multimedia :: Sound/Audio",
+]
+keywords=["samplerate", "converter", "signal processing", "audio"]
+dependencies = [
+    "numpy>=1.23.2", # first release with CPython 3.11 wheels; tested in CI
+]
+
+[project.urls]
+Homepage = "https://github.com/LedFx/python-samplerate-ledfx"
+Source = "https://github.com/LedFx/python-samplerate-ledfx"
+Issues = "https://github.com/LedFx/python-samplerate-ledfx/issues"
+Upstream = "https://github.com/tuxu/python-samplerate"
+
+[dependency-groups]
+wheel-build = ["cibuildwheel[uv]==4.2.1"]
+dev = [
+    "setuptools>=80",
+    # Lint tools, run by prek (.pre-commit-config.yaml) from this lock.
+    "prek>=0.5.3",
+    "ruff==0.16.8",
+    "actionlint-py==1.7.12.24",
+    "shellcheck-py==0.11.0.1",
+]
+test = [
+  "pytest",
+  "pytest-asyncio",
+]
+
+[tool.setuptools.dynamic]
+readme = {file = "README.md", content-type = "text/markdown"}
+
+[tool.pytest.ini_options]
+markers = [
+  "perf: timing benchmarks; flaky on shared CI runners, so CI deselects them with -m 'not perf'",
+]
+
+[tool.cibuildwheel]
+test-groups = ["test"]
+test-command = "pytest {project}/tests -m \"not perf\""
+build-frontend = "build[uv]"
+build = ["cp311-*", "cp312-*", "cp313-*", "cp314-*", "cp315-*"]
+# Skip 32-bit builds and musllinux wheels
+skip = ["*-win32", "*-manylinux_i686", "*-musllinux*"]
+
+[tool.uv]
+# Match Renovate's 14-day minimumReleaseAge (LedFx/renovate-config), including
+# for lock file maintenance, which Renovate does not delay. For an urgent
+# security fix newer than this, add exclude-newer-package = { name = false }.
+exclude-newer = "14 days"
+cache-keys = [
+  { file = "pyproject.toml" },
+  { file = "setup.py" },
+  { file = "CMakeLists.txt" },
+  { dir = "external" },
+  { dir = "src" },
+]
+
+[tool.ruff]
+target-version = "py311"
+extend-exclude = ["docs/conf.py"]
+
+# Source rows replace the workflow wheel matrix.
+
+[[tool.release-ci.targets]]
+platform = "linux"
+arch = "x86_64"
+runner = "ubuntu-latest"
+
+[[tool.release-ci.targets]]
+platform = "linux"
+arch = "aarch64"
+runner = "ubuntu-24.04-arm"
+
+[[tool.release-ci.targets]]
+platform = "windows"
+arch = "AMD64"
+runner = "windows-latest"
+
+[[tool.release-ci.targets]]
+platform = "macos"
+arch = "x86_64"
+runner = "macos-15-intel"
+
+[[tool.release-ci.targets]]
+platform = "macos"
+arch = "arm64"
+runner = "macos-latest"

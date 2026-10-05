@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--assets", type=Path)
     parser.add_argument("--docker-digests", type=Path)
+    parser.add_argument("--wheel-plan")
     args = parser.parse_args()
     try:
         tag = os.environ.get("GITHUB_REF_NAME", "")
@@ -50,6 +51,7 @@ def main() -> int:
             policy=args.policy,
             assets=args.assets,
             docker_digests=args.docker_digests,
+            wheel_plan=args.wheel_plan,
         )
         workflow = os.environ.get("GITHUB_WORKFLOW_REF", "")
         expected = f"{publisher.repo}/{publisher.policy.workflow}@refs/tags/{tag}"

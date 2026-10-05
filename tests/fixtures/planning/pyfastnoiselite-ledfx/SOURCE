@@ -1,0 +1,3 @@
+Configuration copied from LedFx/pyfastnoiselite-ledfx at 8e79852874ac30f7f5b23b794375649397082d77.
+Only tool.release-ci.targets and the wheel-build dependency group were added for the planning proof.
+No native builds or consumer hooks run in these tests.
