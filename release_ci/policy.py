@@ -172,9 +172,14 @@ class Policy:
         )
 
     def distribution_names(self, version: Version) -> set[str]:
-        return {
+        names = {
             f"{self.wheel_stem}-{version.package}-{tag}.whl" for tag in self.wheel_tags
         } | {render(self.sdist, version)}
+        if names & self.asset_names(version):
+            raise PublicationError(
+                "Explicit GitHub assets overlap Python distributions"
+            )
+        return names
 
     def asset_names(self, version: Version) -> set[str]:
         names = {render(template, version) for template in self.asset_templates}

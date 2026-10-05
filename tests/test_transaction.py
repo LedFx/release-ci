@@ -189,6 +189,44 @@ def test_partial_retry_skips_only_matching_remote_files(
     assert all(name not in c[2] for c in remote.writes[:-1])
 
 
+@pytest.mark.parametrize("include_distributions", [False, True])
+def test_explicit_asset_distribution_collision_rejected_before_side_effects(
+    transaction: tuple[Publisher, Remote], tmp_path: Path, include_distributions: bool
+) -> None:
+    from release_ci.common import decode, table
+
+    original, remote = transaction
+    name = next(iter(original.local_inputs()))
+    policy = table(decode(POLICY.read_bytes()))
+    policy["github_assets"] = {
+        "distributions": include_distributions,
+        "files": [name.replace(VERSION, "{version}")],
+    }
+    policy_path = tmp_path / "colliding-policy.json"
+    policy_path.write_text(json.dumps(policy))
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / name).write_bytes(b"different explicit GitHub asset bytes")
+    publisher = Publisher(
+        original.dist,
+        original.snapshot,
+        REPO,
+        "v" + VERSION,
+        SHA,
+        policy=policy_path,
+        assets=assets,
+        command=remote,
+        fetch=remote.fetch,
+    )
+    with pytest.raises(PublicationError):
+        publisher.prepare()
+        upload_pypi(publisher, remote)
+        publisher.finalize()
+    assert not remote.writes
+    assert not remote.commands  # Includes attestations and remote reads.
+    assert remote.release["draft"] is True
+
+
 @pytest.mark.parametrize("change", ["missing", "conflicting", "legacy_download"])
 def test_final_release_response_assets_must_validate_before_publication(
     transaction: tuple[Publisher, Remote], change: str

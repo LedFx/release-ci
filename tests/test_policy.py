@@ -24,6 +24,41 @@ def test_version_normalization(version: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "tag,placeholder,collides",
+    [
+        ("v1.2.3", "{version}", True),
+        ("v1.2.3", "{tag_version}", True),
+        ("v1.2.3rc1", "{tag_version}", True),
+        ("v1.2.3-rc.1", "{version}", True),
+        ("v1.2.3-rc.1", "{tag_version}", False),
+    ],
+)
+def test_asset_collision_uses_actual_expanded_package_and_tag_versions(
+    tag: str, placeholder: str, collides: bool
+) -> None:
+    from dataclasses import replace
+
+    from release_ci.policy import Policy
+
+    policy = Policy.load(
+        Path(__file__).resolve().parents[1] / "examples/audio-hotplug.json"
+    )
+    policy = replace(
+        policy,
+        github_distributions=False,
+        asset_templates=(f"audio_hotplug-{placeholder}.tar.gz",),
+    )
+    version = parse_version(tag, "v")
+    if collides:
+        with pytest.raises(PublicationError, match="overlap"):
+            policy.distribution_names(version)
+    else:
+        assert policy.distribution_names(version).isdisjoint(
+            policy.asset_names(version)
+        )
+
+
+@pytest.mark.parametrize(
     "version", ["1.2", "01.2.3", "1.2.3/dev", "1.2.3+local", "1.2.3\n"]
 )
 def test_unsupported_version_rejected(version: str) -> None:
