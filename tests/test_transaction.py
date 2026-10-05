@@ -139,8 +139,15 @@ class Remote:
                 if self.newer
                 else []
             )
-            return json.dumps([newer]).encode()
-        return json.dumps(self.release).encode()
+            assert "--paginate" in command and "--slurp" in command
+            return json.dumps([[self.release, *newer]]).encode()
+        if endpoint == f"repos/{REPO}/releases/tags/{self.release['tag_name']}":
+            if self.release["draft"]:
+                raise PublicationError("GitHub command failed: draft tag lookup is 404")
+            return json.dumps(self.release).encode()
+        if endpoint == f"repos/{REPO}/releases/{self.release['id']}":
+            return json.dumps(self.release).encode()
+        raise AssertionError(f"Unexpected API endpoint: {endpoint}")
 
 
 @pytest.fixture(params=["cibuildwheel", "pure"])
@@ -165,6 +172,71 @@ def transaction(
         fetch=remote.fetch,
     )
     return publisher, remote
+
+
+def test_draft_discovery_matches_exact_tag_across_pages(
+    transaction: tuple[Publisher, Remote],
+) -> None:
+    publisher, remote = transaction
+
+    def command(arguments: list[str]) -> bytes:
+        if arguments[2] == f"repos/{REPO}/releases":
+            assert "--paginate" in arguments and "--slurp" in arguments
+            return json.dumps(
+                [
+                    [{**remote.release, "id": 31, "tag_name": "v0.3.0rc1"}],
+                    [remote.release],
+                ]
+            ).encode()
+        return remote(arguments)
+
+    publisher.command = command
+    assert publisher.prepare() == {"already_published": False, "pypi_upload": True}
+    snapshot = table(decode(publisher.snapshot.read_bytes()))
+    assert snapshot["release_id"] == 17
+    assert snapshot["tag"] == "v0.3.0"
+    assert not remote.writes
+
+
+@pytest.mark.parametrize("matches", [0, 2])
+def test_missing_or_duplicate_release_tag_cannot_freeze_or_write(
+    transaction: tuple[Publisher, Remote], matches: int
+) -> None:
+    publisher, remote = transaction
+
+    def command(arguments: list[str]) -> bytes:
+        if arguments[2] == f"repos/{REPO}/releases":
+            pages = [[{**remote.release, "id": 17 + index}] for index in range(matches)]
+            return json.dumps(pages or [[]]).encode()
+        return remote(arguments)
+
+    publisher.command = command
+    with pytest.raises(PublicationError):
+        publisher.prepare()
+    assert not publisher.snapshot.exists()
+    assert not remote.writes
+
+
+@pytest.mark.parametrize("change", ["id", "tag_name", "missing"])
+def test_discovered_id_must_match_fresh_release_before_freezing(
+    transaction: tuple[Publisher, Remote], change: str
+) -> None:
+    publisher, remote = transaction
+
+    def command(arguments: list[str]) -> bytes:
+        if arguments[2] == f"repos/{REPO}/releases/17":
+            if change == "missing":
+                raise PublicationError("GitHub command failed: release removed")
+            return json.dumps(
+                {**remote.release, change: 99 if change == "id" else "v0.4.0"}
+            ).encode()
+        return remote(arguments)
+
+    publisher.command = command
+    with pytest.raises(PublicationError):
+        publisher.prepare()
+    assert not publisher.snapshot.exists()
+    assert not remote.writes
 
 
 def upload_pypi(publisher: Publisher, remote: Remote) -> None:
@@ -267,14 +339,17 @@ def test_final_release_response_assets_must_validate_before_publication(
     ]
     final_release_reads = 0
     checking_latest = False
+    previous_endpoint = ""
 
     def command(arguments: list[str]) -> bytes:
-        nonlocal final_release_reads, checking_latest
+        nonlocal final_release_reads, checking_latest, previous_endpoint
         if arguments[:2] == ["gh", "api"]:
             endpoint = arguments[2]
-            if endpoint == f"repos/{REPO}/releases":
+            # Discovery lists are followed by an ID read. latest() has no ID
+            # read, so the following discovery starts with consecutive lists.
+            if endpoint == f"repos/{REPO}/releases" and previous_endpoint == endpoint:
                 checking_latest = True
-            elif checking_latest and "/releases/tags/" in endpoint:
+            elif checking_latest and endpoint == f"repos/{REPO}/releases/17":
                 final_release_reads += 1
                 if final_release_reads == 2:
                     # The first GET was valid. The fresh response immediately
@@ -291,6 +366,7 @@ def test_final_release_response_assets_must_validate_before_publication(
                 # A legacy digest download must not leave local inputs unchecked.
                 path = publisher.dist / next(iter(remote.pypi))
                 path.write_bytes(path.read_bytes() + b"changed during download")
+            previous_endpoint = endpoint
         return remote(arguments)
 
     publisher.command = command

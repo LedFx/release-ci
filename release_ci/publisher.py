@@ -108,8 +108,21 @@ class Publisher:
         )
 
     def release(self) -> dict[str, object]:
-        release = table(self.api(f"releases/tags/{self.tag}"))
-        positive_id(release.get("id"))
+        # The tag endpoint returns published releases only. Authenticated lists
+        # include drafts; scan every page and reject ambiguous exact-tag matches.
+        matches = [
+            table(value)
+            for page in array(self.api("releases", "--paginate", "--slurp"))
+            for value in array(page)
+            if table(value).get("tag_name") == self.tag
+        ]
+        if len(matches) != 1:
+            raise PublicationError("Release tag missing or ambiguous")
+        identifier = positive_id(matches[0].get("id"))
+        # Refresh by immutable ID, rather than using stale listing state to write.
+        release = table(self.api(f"releases/{identifier}"))
+        if positive_id(release.get("id")) != identifier:
+            raise PublicationError("Release ID changed during discovery")
         if (
             release.get("tag_name") != self.tag
             or not string(release.get("body")).strip()
