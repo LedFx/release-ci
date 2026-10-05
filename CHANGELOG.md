@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/LedFx/release-ci/compare/v0.2.0...v0.3.0) (2026-10-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* derive release configuration from pyproject and caller context ([#10](https://github.com/LedFx/release-ci/issues/10))
+
+### Features
+
+* derive release configuration from pyproject and caller context ([#10](https://github.com/LedFx/release-ci/issues/10)) ([6f73d2d](https://github.com/LedFx/release-ci/commit/6f73d2da4182f7b664023646a5e3380764574adf))
+
 ## [0.2.0](https://github.com/LedFx/release-ci/compare/v0.1.0...v0.2.0) (2026-10-05)
 
 
