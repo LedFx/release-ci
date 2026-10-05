@@ -1,0 +1,18 @@
+{
+  "source": "https://pypi.org/pypi/pyfastnoiselite-ledfx/0.0.9/json",
+  "json_sha256": "4f091d07eb0d43a19995b640cda9df4a3c63332ba23d6f26d22a5dcf1f34bcae",
+  "name": "pyfastnoiselite-ledfx",
+  "version": "0.0.9",
+  "filenames": [
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-macosx_10_9_x86_64.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-macosx_11_0_arm64.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-manylinux_2_24_armv7l.manylinux_2_31_armv7l.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-musllinux_1_2_aarch64.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-musllinux_1_2_armv7l.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-musllinux_1_2_x86_64.whl",
+    "pyfastnoiselite_ledfx-0.0.9-cp311-abi3-win_amd64.whl",
+    "pyfastnoiselite_ledfx-0.0.9.tar.gz"
+  ]
+}

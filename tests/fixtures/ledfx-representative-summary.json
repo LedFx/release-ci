@@ -1,0 +1,9 @@
+{
+  "name": "LedFx",
+  "version": "2.2.0",
+  "wheel": "ledfx-2.2.0-py3-none-any.whl",
+  "wheel_metadata_only": true,
+  "metadata_name": "LedFx",
+  "metadata_version": "2.2.0",
+  "metadata_requires_python": "<3.15,>=3.11"
+}

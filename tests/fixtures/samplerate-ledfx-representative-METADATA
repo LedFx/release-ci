@@ -1,0 +1,30 @@
+Metadata-Version: 2.4
+Name: samplerate-ledfx
+Version: 0.4.0
+Summary: Monolithic python wrapper for libsamplerate based on pybind11 and NumPy
+Author: LedFx
+Author-email: Robin Scheibler <fakufaku@gmail.com>, Tino Wagner <ich@tinowagner.com>
+Project-URL: Homepage, https://github.com/LedFx/python-samplerate-ledfx
+Project-URL: Source, https://github.com/LedFx/python-samplerate-ledfx
+Project-URL: Issues, https://github.com/LedFx/python-samplerate-ledfx/issues
+Project-URL: Upstream, https://github.com/tuxu/python-samplerate
+Keywords: samplerate,converter,signal processing,audio
+Classifier: Development Status :: 3 - Alpha
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: Python :: 3.15
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Multimedia :: Sound/Audio
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE.rst
+Requires-Dist: numpy>=1.23.2
+Dynamic: license-file

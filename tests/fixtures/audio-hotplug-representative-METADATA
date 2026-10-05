@@ -1,0 +1,46 @@
+Metadata-Version: 2.3
+Name: audio-hotplug
+Version: 0.1.0
+Summary: Cross-platform audio device hotplug detection with debouncing
+Keywords: audio,device,hotplug,monitoring,udev,coreaudio
+Author: LedFx Developers
+Author-email: LedFx Developers <developers@ledfx.app>
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Topic :: Multimedia :: Sound/Audio
+Classifier: Topic :: System :: Hardware
+Requires-Dist: pycaw>=20220416 ; sys_platform == 'win32'
+Requires-Dist: comtypes>=1.1.14 ; sys_platform == 'win32'
+Requires-Dist: pyobjc-framework-coreaudio>=9.0 ; sys_platform == 'darwin'
+Requires-Dist: pyudev>=0.24.0 ; sys_platform == 'linux'
+Requires-Dist: pytest>=7.0.0 ; extra == 'dev'
+Requires-Dist: pytest-cov>=4.0.0 ; extra == 'dev'
+Requires-Dist: pytest-asyncio>=0.21.0 ; extra == 'dev'
+Requires-Dist: black>=23.0.0 ; extra == 'dev'
+Requires-Dist: ruff>=0.1.0 ; extra == 'dev'
+Requires-Dist: isort>=5.12.0 ; extra == 'dev'
+Requires-Dist: mypy>=1.0.0 ; extra == 'dev'
+Requires-Dist: build>=1.0.0 ; extra == 'dev'
+Requires-Dist: twine>=4.0.0 ; extra == 'dev'
+Requires-Dist: pyudev>=0.24.0 ; extra == 'linux'
+Requires-Dist: pyobjc-framework-coreaudio>=9.0 ; extra == 'macos'
+Requires-Dist: pycaw>=20220416 ; extra == 'windows'
+Requires-Dist: comtypes>=1.1.14 ; extra == 'windows'
+Requires-Python: >=3.10, <3.14
+Project-URL: Homepage, https://github.com/LedFx/audio-hotplug
+Project-URL: Repository, https://github.com/LedFx/audio-hotplug
+Project-URL: Issues, https://github.com/LedFx/audio-hotplug/issues
+Project-URL: Documentation, https://github.com/LedFx/audio-hotplug#readme
+Provides-Extra: dev
+Provides-Extra: linux
+Provides-Extra: macos
+Provides-Extra: windows
+Description-Content-Type: text/markdown

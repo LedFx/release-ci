@@ -1,0 +1,11 @@
+{
+  "name": "ledfx-senders",
+  "version": "0.2.0",
+  "wheel": "ledfx_senders-0.2.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+  "metadata_name": "ledfx-senders",
+  "metadata_version": "0.2.0",
+  "metadata_requires_python": "<3.16,>=3.11",
+  "sdist": "ledfx_senders-0.2.0.tar.gz",
+  "pkginfo_name": "ledfx-senders",
+  "pkginfo_version": "0.2.0"
+}

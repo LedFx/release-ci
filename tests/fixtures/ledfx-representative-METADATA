@@ -1,0 +1,53 @@
+Metadata-Version: 2.1
+Name: LedFx
+Version: 2.2.0
+Summary: A network based light effect controller
+Author: LedFx Developers
+License: GPL-3.0 License
+Requires-Python: <3.15,>=3.11
+Requires-Dist: numpy<3.0.0,>=2.0.0
+Requires-Dist: cffi>=0.16.0
+Requires-Dist: wheel>=0.36.2
+Requires-Dist: aiohttp<4.0.0,>=3.9.1
+Requires-Dist: aubio-ledfx>=0.4.11
+Requires-Dist: cython>=3.0.7
+Requires-Dist: certifi>=2023.11.17
+Requires-Dist: multidict>=6.0.4
+Requires-Dist: openrgb-python>=0.2.15
+Requires-Dist: paho-mqtt>=1.6.1
+Requires-Dist: psutil>=5.9.7
+Requires-Dist: pyserial>=3.5
+Requires-Dist: pystray>=0.19.5
+Requires-Dist: python-rtmidi>=1.5.8
+Requires-Dist: requests>=2.31.0
+Requires-Dist: sacn>=1.9.0
+Requires-Dist: sentry-sdk>=1.40.4
+Requires-Dist: sounddevice>=0.4.6
+Requires-Dist: icmplib>=3.0.4
+Requires-Dist: voluptuous>=0.14.1
+Requires-Dist: zeroconf>=0.131.0
+Requires-Dist: pillow>=10.1.0
+Requires-Dist: flux-led>=1.0.4
+Requires-Dist: lifx-async>=6.5.1
+Requires-Dist: python-osc>=1.8.3
+Requires-Dist: pybase64~=1.5.0
+Requires-Dist: mss~=10.2.0
+Requires-Dist: uvloop>=0.16.0; sys_platform != "win32"
+Requires-Dist: winloop>=0.3.1; sys_platform == "win32"
+Requires-Dist: rpi-ws281x>=4.3.0; sys_platform == "linux"
+Requires-Dist: stupidartnet<2.0.0,>=1.6.0
+Requires-Dist: python-dotenv<2.0.0,>=1.0.0
+Requires-Dist: pyfastnoiselite-ledfx>=0.0.8
+Requires-Dist: netifaces2>=0.0.22
+Requires-Dist: packaging>=21.0
+Requires-Dist: xled>=0.7.0
+Requires-Dist: samplerate-ledfx>=0.2.3
+Requires-Dist: audio-hotplug>=0.1.0
+Requires-Dist: aiosendspin<9.2.0,>=9.1.1; python_version >= "3.12"
+Requires-Dist: pyflac>=2.2.0; python_version >= "3.12"
+Requires-Dist: winrt-Windows.Foundation>=2.0.0; sys_platform == "win32"
+Requires-Dist: winrt-Windows.Media.Control>=2.0.0; sys_platform == "win32"
+Requires-Dist: dbus-fast<6.0.0,>=5.0.22; sys_platform == "linux"
+Provides-Extra: hue
+Requires-Dist: python-mbedtls==2.9.2; python_version <= "3.12" and ((platform_machine != "aarch64" and platform_machine != "armv7l") and sys_platform == "linux" or sys_platform == "win32" or sys_platform == "darwin") and extra == "hue"
+Description-Content-Type: text/x-rst

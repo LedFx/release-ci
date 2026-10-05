@@ -1,0 +1,12 @@
+Metadata-Version: 2.1
+Name: ledfx-senders
+Version: 0.2.0
+Summary: Native packet senders for Python applications
+Author: LedFx Developers
+License: GPL-3.0 License
+Project-URL: Homepage, https://github.com/LedFx/ledfx-senders
+Project-URL: Repository, https://github.com/LedFx/ledfx-senders
+Project-URL: Issues, https://github.com/LedFx/ledfx-senders/issues
+Requires-Python: <3.16,>=3.11
+Requires-Dist: numpy<3.0.0,>=2.0.0
+Description-Content-Type: text/markdown

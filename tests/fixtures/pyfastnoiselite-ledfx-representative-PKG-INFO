@@ -1,0 +1,24 @@
+Metadata-Version: 2.4
+Name: pyfastnoiselite-ledfx
+Version: 0.0.9
+Summary: Cython wrapper for Auburn's FastNoise Lite noise library, with stable-ABI wheels (LedFx fork of pyfastnoiselite)
+Author: LedFx
+Author-email: Tiziano Bettio <tc@tizilogic.com>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/LedFx/pyfastnoiselite-ledfx
+Project-URL: Source, https://github.com/LedFx/pyfastnoiselite-ledfx
+Project-URL: Issues, https://github.com/LedFx/pyfastnoiselite-ledfx/issues
+Project-URL: Upstream, https://github.com/tizilogic/PyFastNoiseLite
+Keywords: noise,simplex,perlin,procedural,fastnoise
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Cython
+Classifier: Programming Language :: Python :: 3
+Classifier: Topic :: Multimedia :: Graphics
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: ext/FastNoise/LICENSE
+Requires-Dist: numpy>=1.23.2
+Dynamic: license-file

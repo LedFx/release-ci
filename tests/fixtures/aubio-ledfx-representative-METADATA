@@ -1,0 +1,33 @@
+Metadata-Version: 2.1
+Name: aubio-ledfx
+Version: 0.4.12
+Summary: A collection of tools for music analysis
+Author-Email: Paul Brossier <piem@aubio.org>
+Maintainer-Email: LedFx Team <hello@ledfx.app>
+License: GNU/GPL version 3
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Software Development :: Libraries
+Classifier: Topic :: Multimedia :: Sound/Audio :: Analysis
+Classifier: Topic :: Multimedia :: Sound/Audio :: Sound Synthesis
+Classifier: Operating System :: POSIX
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Programming Language :: C
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Programming Language :: Python :: 3.14
+Classifier: Programming Language :: Python :: 3.15
+Classifier: License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)
+Project-URL: Homepage, https://github.com/LedFx/aubio-ledfx
+Project-URL: Repository, https://github.com/LedFx/aubio-ledfx
+Project-URL: Changelog, https://github.com/LedFx/aubio-ledfx/blob/main/CHANGELOG.md
+Project-URL: Documentation, https://aubio.org/manual/latest/
+Project-URL: Upstream, https://github.com/aubio/aubio
+Requires-Python: >=3.11
+Requires-Dist: numpy>=1.26.4
+Description-Content-Type: text/markdown

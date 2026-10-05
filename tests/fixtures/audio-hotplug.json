@@ -1,0 +1,10 @@
+{
+  "source": "https://pypi.org/pypi/audio-hotplug/0.1.0/json",
+  "json_sha256": "5ea337780b985979b30012cb1083f3f8ab16cd78319f100a0155f0da72fdfa92",
+  "name": "audio-hotplug",
+  "version": "0.1.0",
+  "filenames": [
+    "audio_hotplug-0.1.0-py3-none-any.whl",
+    "audio_hotplug-0.1.0.tar.gz"
+  ]
+}

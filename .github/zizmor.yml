@@ -1,0 +1,5 @@
+rules:
+  secrets-outside-env:
+    # App credentials manage this repository's release PR/tag, not packages.
+    ignore:
+      - release-please.yml
