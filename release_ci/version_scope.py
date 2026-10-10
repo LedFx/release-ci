@@ -109,22 +109,27 @@ def version_only_change(
     package_name: str,
     versioned_manifests: Iterable[str],
     prose_metadata: frozenset[str] = PROSE_METADATA,
+    simple_version_files: frozenset[str] = frozenset(),
 ) -> bool:
     """True when the whole diff is release metadata a rebuild cannot alter.
 
     ``base`` is caller-chosen: ``origin/main...HEAD`` for a PR merge ref,
     ``HEAD^`` for a direct push. Fails open on any git problem.
+    ``simple_version_files`` are whole-file version literals (version.txt,
+    a ``__version__`` module) that are artifact-neutral only when the rest
+    of the change set is too.
     """
     listed = changed_files(root, base, head)
     if not listed:
         return False
+    allowed = prose_metadata | simple_version_files
     manifests = tuple(
         dict.fromkeys(name for name in listed if name in set(versioned_manifests))
     )
     rest = set(listed) - set(manifests)
     if not manifests:
-        return bool(rest) and rest <= prose_metadata
-    if rest and not rest <= prose_metadata:
+        return bool(rest) and rest <= allowed
+    if rest and not rest <= allowed:
         return False
     package_anchors = anchors(package_name)
     return all(
