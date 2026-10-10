@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/LedFx/release-ci/compare/v0.3.1...v0.4.0) (2026-10-10)
+
+
+### Features
+
+* version_scope detector and version-scope composite action ([#15](https://github.com/LedFx/release-ci/issues/15)) ([1a7e0ba](https://github.com/LedFx/release-ci/commit/1a7e0ba4092b46a0f0e6d15a82f0d19c0a0e98fb))
+
 ## [0.3.1](https://github.com/LedFx/release-ci/compare/v0.3.0...v0.3.1) (2026-10-05)
 
 

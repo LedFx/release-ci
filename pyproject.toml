@@ -1,6 +1,6 @@
 [project]
 name = "ledfx-release-ci"
-version = "0.3.1"
+version = "0.4.0"
 description = "Verified release transactions for LedFx GitHub Actions"
 requires-python = ">=3.11"
 dependencies = []
