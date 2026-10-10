@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Standalone version-scope entrypoint for the composite action."""
 
 from __future__ import annotations
