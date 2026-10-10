@@ -53,4 +53,6 @@ runs:
           *) exit 0 ;; # schedule and manual runs always build
         esac
         export SCOPE_BASE="$base"
+        # Actions execute in the consumer's workspace; the detector lives here.
+        export PYTHONPATH="$ACTION_ROOT${PYTHONPATH:+:$PYTHONPATH}"
         python3 "$ACTION_ROOT/actions/version-scope/entrypoint.py"
