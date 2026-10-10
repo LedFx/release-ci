@@ -19,9 +19,6 @@ def main() -> int:
         for line in os.environ.get("VERSIONED_MANIFESTS", "").splitlines()
         if line.strip()
     )
-    if not manifests:
-        print("versioned-manifests input is required", file=sys.stderr)
-        return 1
     prose = {
         "CHANGELOG.md",
         "CHANGELOG.rst",
@@ -37,6 +34,12 @@ def main() -> int:
         for line in os.environ.get("SIMPLE_VERSION_FILES", "").splitlines()
         if line.strip()
     }
+    if not manifests and not simple:
+        print(
+            "versioned-manifests or simple-version-files input is required",
+            file=sys.stderr,
+        )
+        return 1
     base = os.environ.get("SCOPE_BASE", "")
     if not base:
         print(
