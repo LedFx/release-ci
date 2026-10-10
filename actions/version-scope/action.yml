@@ -1,0 +1,56 @@
+name: Detect version-only change
+description: >-
+  True when the whole diff is release metadata (changelog, manifest, the
+  package's own version declarations) that cannot alter built artifacts.
+  Renovate dependency and lock bumps leave foreign anchors or lines and
+  still report false. Any ambiguity fails open: unknown history, unreadable
+  diffs and empty diffs all report false, so the full matrix runs.
+inputs:
+  package-name:
+    description: Distribution name used as the version-table anchor
+    required: true
+  versioned-manifests:
+    description: >-
+      Newline-separated manifests whose diffs must touch only version lines
+      (e.g. pyproject.toml, uv.lock, native/Cargo.toml)
+    required: true
+  prose-files:
+    description: >-
+      Optional extra release-prose paths that are always artifact-neutral
+      (the changelog and .release-please-manifest.json are included already)
+    required: false
+    default: ""
+  simple-version-files:
+    description: >-
+      Optional whole-file version literals (e.g. version.txt, src/pkg/__init__.py)
+      that are artifact-neutral when they appear with no other files
+    required: false
+    default: ""
+outputs:
+  version-only:
+    description: "true when the diff is artifact-neutral release metadata"
+    value: ${{ steps.scope.outputs.version-only }}
+runs:
+  using: composite
+  steps:
+    - id: scope
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/../..
+        PACKAGE_NAME: ${{ inputs.package-name }}
+        VERSIONED_MANIFESTS: ${{ inputs.versioned-manifests }}
+        PROSE_FILES: ${{ inputs.prose-files }}
+        SIMPLE_VERSION_FILES: ${{ inputs.simple-version-files }}
+        EVENT: ${{ github.event_name }}
+        REF: ${{ github.ref }}
+      run: |
+        case "$EVENT" in
+          pull_request) base="origin/main...HEAD" ;;
+          push)
+            if [[ "$REF" == refs/tags/* ]]; then exit 0; fi
+            base="HEAD^"
+            ;;
+          *) exit 0 ;; # schedule and manual runs always build
+        esac
+        export SCOPE_BASE="$base"
+        python3 "$ACTION_ROOT/actions/version-scope/entrypoint.py"
