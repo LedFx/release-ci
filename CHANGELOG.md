@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/LedFx/release-ci/compare/v0.4.1...v0.4.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* allow a version-scope consumer with only simple version files ([#19](https://github.com/LedFx/release-ci/issues/19)) ([ceb1e80](https://github.com/LedFx/release-ci/commit/ceb1e8006cabff918f6cf40229c8113f3df47043))
+
 ## [0.4.1](https://github.com/LedFx/release-ci/compare/v0.4.0...v0.4.1) (2026-10-10)
 
 
