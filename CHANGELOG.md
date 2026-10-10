@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/LedFx/release-ci/compare/v0.4.0...v0.4.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* put the action root on PYTHONPATH for the version-scope entrypoint ([#17](https://github.com/LedFx/release-ci/issues/17)) ([88e9499](https://github.com/LedFx/release-ci/commit/88e94998ef70ce28adeadfa5259f48ab40c61494))
+
 ## [0.4.0](https://github.com/LedFx/release-ci/compare/v0.3.1...v0.4.0) (2026-10-10)
 
 
