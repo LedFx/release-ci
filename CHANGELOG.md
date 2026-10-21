@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/LedFx/release-ci/compare/v0.4.2...v0.4.3) (2026-10-21)
+
+
+### Bug Fixes
+
+* **version-scope:** compare a push from its before commit ([#21](https://github.com/LedFx/release-ci/issues/21)) ([d080761](https://github.com/LedFx/release-ci/commit/d080761af149dbc3948ad4bb85a44337153ba587))
+
 ## [0.4.2](https://github.com/LedFx/release-ci/compare/v0.4.1...v0.4.2) (2026-10-10)
 
 
