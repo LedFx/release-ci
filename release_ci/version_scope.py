@@ -114,7 +114,7 @@ def version_only_change(
     """True when the whole diff is release metadata a rebuild cannot alter.
 
     ``base`` is caller-chosen: ``origin/main...HEAD`` for a PR merge ref,
-    ``HEAD^`` for a direct push. Fails open on any git problem.
+    the push's before commit for a direct push. Fails open on any git problem.
     ``simple_version_files`` are whole-file version literals (version.txt,
     a ``__version__`` module) that are artifact-neutral only when the rest
     of the change set is too.

@@ -43,12 +43,18 @@ runs:
         SIMPLE_VERSION_FILES: ${{ inputs.simple-version-files }}
         EVENT: ${{ github.event_name }}
         REF: ${{ github.ref }}
+        BEFORE: ${{ github.event.before }}
       run: |
         case "$EVENT" in
           pull_request) base="origin/main...HEAD" ;;
           push)
             if [[ "$REF" == refs/tags/* ]]; then exit 0; fi
-            base="HEAD^"
+            # Compare the whole push, not its last commit: a rebase merge can
+            # push a source change followed by a version-only commit. A new
+            # branch has no before commit; a shallow checkout that lacks it
+            # makes the detector fail open.
+            if [[ -z "$BEFORE" || "$BEFORE" =~ ^0+$ ]]; then exit 0; fi
+            base="$BEFORE"
             ;;
           *) exit 0 ;; # schedule and manual runs always build
         esac
