@@ -15,7 +15,7 @@ dev = [
     "zizmor==1.30.1",
     "prek>=0.5.3",
     "pyrefly==1.4.0",
-    "cibuildwheel==4.3.1",
+    "cibuildwheel==4.3.4",
 ]
 
 [tool.uv]
